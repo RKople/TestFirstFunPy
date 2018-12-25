@@ -18,7 +18,7 @@ debut = time.time()
 
 for k in range(1):
     mini = 0
-    maxi = 10**9
+    maxi = 100
     entry = 0
     nb = GenNb(mini, maxi)
     ##PrintInter(mini, maxi)
@@ -52,5 +52,5 @@ for k in L:
     somme += k
 moyenne = somme/len(L)
 print("MOYENNE d'essais:", moyenne)
-print("TEMPS :", time)
+#print("TEMPS :", time)
 print("Plus grand nombre d'essais :", max(L))
