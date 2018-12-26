@@ -47,6 +47,7 @@ maxi = score * 2 + 10
 while nbTook != "quit":
     nb1 = GenNb(mini, maxi)
     nb2 = GenNb(mini, maxi)
+    print("")
     PrintCalcul(nb1, nb2)
     nbTook = str(input(">>> "))
     if nbTook == "cheat":
