@@ -16,7 +16,7 @@ L=[]
 
 debut = time.time()
 
-for k in range(1):
+for k in range(1000):
     mini = 0
     maxi = 100
     entry = 0
