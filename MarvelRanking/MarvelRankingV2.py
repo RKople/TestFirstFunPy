@@ -1,18 +1,11 @@
 import pickle
 
-##string = "salut"
-##
-##pickle.dump(string, open('mypicklefile', 'wb'))
-##
-##f0 = open('mypicklefile', 'rb')
-##user_name_list = pickle.load(f0)
-##f0.close()
-##
-##print(user_name_list)
 
 LQ = ["Acteurs", "Mechants", "Humour", "Scenario", "Action", "Envie de le revoir", "Effets speciaux", "Lieux"]
 LM = ["Iron Man", "The Incredible Hulk", "Iron Man 2", "Thor", "Captain America: The First Avenger", "Marvel's The Avengers", "Iron Man 3", "Thor: The Dark World", "Captain America: The Winter Soldier", "Guardians of the Galaxy", "Avengers: Age of Ultron", "Ant-Man", "Captain America: Civil War", "Doctor Strange", "Guardians of the Galaxy Vol. 2", "Spider-Man: Homecoming", "Thor: Ragnarok", "Black Panther", "Avengers: Infinity War", "Ant-Man and the Wasp"]
-dico = {}
+f0=open('mypicklefile', 'rb')
+dico = pickle.load(f0)
+f0.close()
 movie = ""
 totalPts = 0
 
@@ -28,29 +21,45 @@ def CheckMovie(LM, movie):
     else:
         return True
 
-def PrintLM(LM):
+def PrintLM(LM, dico):
     k=0
     while(k<len(LM)):
-        print('-', LM[k])
+        if LM[k] in dico:
+            print('+', LM[k])
+        else:
+            print('-', LM[k])
         k+=1
 
 def RankCat(Q):
     display = "Notez sur 20 cette categorie - " + Q + ": "
     return int(input(display))
 
-f0=open('mypicklefile', 'rb')
-dico = pickle.load(f0)
-f0.close()
+def GetDico():
+    f0=open('mypicklefile', 'rb')
+    dico = pickle.load(f0)
+    f0.close()
+    return dico
 
+def RankMovies(LQ, LM, movie, totalPts):
+    dico = GetDico()
+    while(CheckMovie(LM, movie)):
+        PrintLM(LM, dico)
+        movie = input("Saisir le film à noter : ")
 
-while(CheckMovie(LM, movie)):
-    PrintLM(LM)
-    movie = input("Saisir le film à noter : ")
+    print("Film = ",movie)
 
-print("Film = ",movie)
+    for k in LQ:
+        note = RankCat(k)
+        totalPts += note
+    moy = Moy(totalPts, LQ)
+    SaveData(moy, movie, dico)
 
-for k in LQ:
-    note = RankCat(k)
-    totalPts += note
-moy = Moy(totalPts, LQ)
-SaveData(moy, movie, dico)
+# RankMovies(LQ, LM, movie, totalPts)
+
+def PrintRank():
+    dico = GetDico()
+    L = sorted(dico.items(), key=lambda t: t[1], reverse=True)
+    for k in L:
+        print(k)
+
+PrintRank()
