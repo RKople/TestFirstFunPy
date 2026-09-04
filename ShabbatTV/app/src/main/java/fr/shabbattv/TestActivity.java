@@ -18,35 +18,99 @@ import java.util.Date;
 
 public class TestActivity extends Activity {
     private TextView status;
+
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
         LinearLayout root=Ui.page(this);
-        root.addView(Ui.eyebrow(this,"Diagnostic"));
-        root.addView(Ui.title(this,"Tests"),Ui.lp(-1,-2,this,5));
-        root.addView(Ui.subtitle(this,"Teste chaque brique séparément avant de programmer un vrai Chabbat."),Ui.lp(-1,-2,this,7));
+        Ui.header(root,this,"Diagnostic","Tests","Teste séparément le réveil, la lecture Plex et la mise en veille avant un vrai Chabbat.");
 
-        LinearLayout grid=new LinearLayout(this); grid.setOrientation(LinearLayout.HORIZONTAL);
-        Button wake=Ui.button(this,"Wake-up · 2 min",true); wake.setOnClickListener(v->wakeTest());
-        Button play=Ui.button(this,"Lire le film · maintenant",false); play.setOnClickListener(v->playNow());
-        Button sleep=Ui.button(this,"Veille · maintenant",false); sleep.setOnClickListener(v->{String d=SleepHelper.sleepNow(this);status.setText("Veille : "+d);});
-        Button sleepLater=Ui.button(this,"Veille · 1 min",false); sleepLater.setOnClickListener(v->sleepInMinute());
-        grid.addView(wake,w()); grid.addView(play,wg()); grid.addView(sleep,wg()); grid.addView(sleepLater,wg());
-        root.addView(grid,Ui.lp(-1,Ui.dp(this,66),this,24));
+        LinearLayout displayCard=Ui.card(this);
+        displayCard.addView(Ui.eyebrow(this,"Affichage détecté"));
+        displayCard.addView(Ui.body(this,"Philips OLED810 · dalle 3840 × 2160"),Ui.lp(-1,-2,this,5));
+        displayCard.addView(Ui.muted(this,"Fenêtre Android : "+Ui.metrics(this)+"\nInterface protégée par une zone sûre de 5 % sur chaque bord."),Ui.lp(-1,-2,this,4));
+        root.addView(displayCard,Ui.lp(-1,-2,this,Ui.compact(this)?14:22));
+
+        LinearLayout row1=new LinearLayout(this);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        Button wake=Ui.button(this,"Wake-up · 2 min",true);
+        wake.setOnClickListener(v->wakeTest());
+        Button play=Ui.button(this,"Lire le film · maintenant",false);
+        play.setOnClickListener(v->playNow());
+        row1.addView(wake,w());
+        row1.addView(play,wg());
+        root.addView(row1,Ui.lp(-1,Ui.dp(this,Ui.controlHeight(this)),this,Ui.compact(this)?10:16));
+
+        LinearLayout row2=new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        Button sleep=Ui.button(this,"Veille · maintenant",false);
+        sleep.setOnClickListener(v->{String d=SleepHelper.sleepNow(this);status.setText("Veille : "+d);});
+        Button sleepLater=Ui.button(this,"Veille · dans 1 min",false);
+        sleepLater.setOnClickListener(v->sleepInMinute());
+        row2.addView(sleep,w());
+        row2.addView(sleepLater,wg());
+        root.addView(row2,Ui.lp(-1,Ui.dp(this,Ui.controlHeight(this)),this,6));
 
         LinearLayout card=Ui.card(this);
         card.addView(Ui.eyebrow(this,"Dernier diagnostic"));
-        status=Ui.muted(this,"Aucun test lancé."); status.setTextSize(14); card.addView(status,Ui.lp(-1,-2,this,10));
-        root.addView(card,Ui.lp(-1,-2,this,20));
-        setContentView(root); refresh();
+        status=Ui.muted(this,"Aucun test lancé.");
+        status.setTextSize(Ui.compact(this)?12:14);
+        status.setTextIsSelectable(true);
+        card.addView(status,Ui.lp(-1,-2,this,7));
+        root.addView(card,Ui.lp(-1,-2,this,Ui.compact(this)?10:16));
+
+        Ui.setScrollable(this,root);
+        refresh();
     }
-    private LinearLayout.LayoutParams w(){return new LinearLayout.LayoutParams(0,-1,1);} private LinearLayout.LayoutParams wg(){LinearLayout.LayoutParams p=w();p.setMargins(Ui.dp(this,10),0,0,0);return p;}
+
+    private LinearLayout.LayoutParams w(){
+        return new LinearLayout.LayoutParams(0,-1,1);
+    }
+
+    private LinearLayout.LayoutParams wg(){
+        LinearLayout.LayoutParams p=w();
+        p.setMargins(Ui.dp(this,Ui.compact(this)?6:10),0,0,0);
+        return p;
+    }
+
     private void refresh(){
         String wake=getSharedPreferences("wake_diag",MODE_PRIVATE).getString("diag_log","");
         String playErr=AppState.prefs(this).getString("last_play_error","");
         String sleep=AppState.prefs(this).getString("last_sleep_diag","");
-        status.setText("Réveil : "+(wake.isEmpty()?"aucun test":wake)+"\n\nLecture : "+(playErr.isEmpty()?"aucune erreur":playErr)+"\n\nVeille : "+(sleep.isEmpty()?"aucun test":sleep));
+        status.setText("Réveil\n"+(wake.isEmpty()?"Aucun test":wake)+"\n\nLecture Plex\n"+(playErr.isEmpty()?"Aucune erreur enregistrée":playErr)+"\n\nVeille\n"+(sleep.isEmpty()?"Aucun test":sleep));
     }
-    private void playNow(){JSONObject m=AppState.selectedMovie(this);if(m==null){status.setText("Sélectionne d’abord un film dans Films.");return;}Intent i=new Intent(this,PlayerActivity.class);i.putExtra("movie",m.toString());i.putExtra("volume",AppState.defaultVolume(this));i.putExtra("sleep_when_done",false);startActivity(i);}
-    private void wakeTest(){AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){status.setText("Autorise les alarmes exactes depuis l’accueil.");return;}long when=System.currentTimeMillis()+120_000L;Intent i=new Intent(this,WakeReceiver.class);PendingIntent p=PendingIntent.getBroadcast(this,707,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,p);else am.setExact(AlarmManager.RTC_WAKEUP,when,p);status.setText("Wake-up armé pour "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when))+".\nÉteins maintenant la TV avec la télécommande.");}
-    private void sleepInMinute(){AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);long when=System.currentTimeMillis()+60_000L;Intent i=new Intent(this,SleepTestActivity.class);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);PendingIntent p=PendingIntent.getActivity(this,708,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,p);else am.setExact(AlarmManager.RTC_WAKEUP,when,p);status.setText("Mise en veille prévue à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when))+".");}
+
+    private void playNow(){
+        JSONObject m=AppState.selectedMovie(this);
+        if(m==null){ status.setText("Sélectionne d’abord un film dans Films."); return; }
+        Intent i=new Intent(this,PlayerActivity.class);
+        i.putExtra("movie",m.toString());
+        i.putExtra("volume",AppState.defaultVolume(this));
+        i.putExtra("sleep_when_done",false);
+        startActivity(i);
+    }
+
+    private void wakeTest(){
+        AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);
+        if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){
+            status.setText("Autorise les alarmes exactes depuis l’accueil.");
+            return;
+        }
+        long when=System.currentTimeMillis()+120_000L;
+        Intent i=new Intent(this,WakeReceiver.class);
+        PendingIntent p=PendingIntent.getBroadcast(this,707,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        if(Build.VERSION.SDK_INT>=23) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,p);
+        else am.setExact(AlarmManager.RTC_WAKEUP,when,p);
+        status.setText("Wake-up armé pour "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when))+".\nÉteins maintenant la TV avec la télécommande.");
+    }
+
+    private void sleepInMinute(){
+        AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);
+        long when=System.currentTimeMillis()+60_000L;
+        Intent i=new Intent(this,SleepTestActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent p=PendingIntent.getActivity(this,708,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        if(Build.VERSION.SDK_INT>=23) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,p);
+        else am.setExact(AlarmManager.RTC_WAKEUP,when,p);
+        status.setText("Mise en veille prévue à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when))+".");
+    }
 }
