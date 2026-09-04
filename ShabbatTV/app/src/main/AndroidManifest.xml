@@ -19,6 +19,7 @@
         <receiver android:name=".PreWakeReceiver" android:enabled="true" android:exported="false" />
         <receiver android:name=".ScheduleReceiver" android:enabled="true" android:exported="false" />
 
+        <activity android:name=".WaitingActivity" android:exported="false" android:launchMode="singleTask" android:screenOrientation="landscape" />
         <activity android:name=".ArmedActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name=".PlayerActivity" android:exported="false" android:launchMode="singleTask" android:screenOrientation="landscape" />
         <activity android:name=".SleepTestActivity" android:exported="false" android:screenOrientation="landscape" />
