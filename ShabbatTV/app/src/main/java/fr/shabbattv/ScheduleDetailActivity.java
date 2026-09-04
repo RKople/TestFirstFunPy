@@ -25,7 +25,7 @@ public class ScheduleDetailActivity extends Activity {
         scheduleId = getIntent().getStringExtra("schedule_id");
         schedule = AppState.scheduleById(this, scheduleId);
         LinearLayout root = Ui.page(this);
-        Ui.header(root, this, "Planning", "Détail de la séance", "Réveil, lecture Plex et extinction prévus pour cette séance.");
+        Ui.header(root, this, "Planning", "Détail de la séance", "Toutes les étapes prévues pour cette séance, du réveil de la Philips jusqu’à la fin du film.");
 
         LinearLayout card = Ui.card(this); card.addView(Ui.eyebrow(this,"Séance programmée"));
         TextView title = Ui.title(this, schedule == null ? "Séance introuvable" : schedule.optString("title","Film")); title.setTextSize(Ui.compact(this) ? 23 : 28);
@@ -39,17 +39,26 @@ public class ScheduleDetailActivity extends Activity {
 
     private void render() {
         if (schedule == null) { info.setText("Cette séance n’existe plus. Elle a peut-être déjà été jouée ou supprimée."); return; }
-        long when=schedule.optLong("when",0L),wakeAt=schedule.optLong("wakeAt",when-AppState.preWakeMinutes(this)*60_000L),duration=schedule.optLong("durationMs",0L),endAt=schedule.optLong("endAt",duration>0?when+duration:0L);
+        long when=schedule.optLong("when",0L);
+        long wakeAt=schedule.optLong("wakeAt",when-AppState.preWakeMinutes(this)*60_000L);
+        long retryAt=schedule.optLong("retryAt",0L);
+        long visibleEstimate=schedule.optLong("visibleEstimateAt",wakeAt+3*60_000L);
+        long duration=schedule.optLong("durationMs",0L),endAt=schedule.optLong("endAt",duration>0?when+duration:0L);
         int volume=schedule.optInt("volume",AppState.defaultVolume(this));
         String server=schedule.optString("server",AppState.prefs(this).getString("plex_server_name","Plex"));
         String audio=schedule.optString("audioLabel","Automatique"),subs=schedule.optString("subtitleLabel","Aucun");
         DateFormat d=DateFormat.getDateTimeInstance(DateFormat.FULL,DateFormat.SHORT),t=DateFormat.getTimeInstance(DateFormat.SHORT);
         StringBuilder s=new StringBuilder();
         s.append("Date  ·  ").append(d.format(new Date(when))).append("\n\n");
-        s.append("TV réveillée  ·  ").append(t.format(new Date(wakeAt))).append("\n");
-        s.append("  La dalle est allumée sur un écran noir afin de garder Android éveillé et fiabiliser l’heure de départ.\n\n");
+        s.append("Commande de réveil  ·  ").append(t.format(new Date(wakeAt))).append("\n");
+        s.append("  Même mécanisme que le test Wake-up validé.\n");
+        s.append("Allumage estimé  ·  vers ").append(t.format(new Date(visibleEstimate))).append("\n");
+        s.append("  L’heure réelle peut varier de quelques minutes selon la veille Philips.\n");
+        if(retryAt>0L)s.append("Réveil de secours  ·  ").append(t.format(new Date(retryAt))).append("\n");
+        s.append("\nÉcran d’attente  ·  dès que la TV s’allume\n");
+        s.append("  Affiche le film et un compte à rebours jusqu’au démarrage.\n\n");
         s.append("Début du film  ·  ").append(t.format(new Date(when))).append("\n");
-        s.append("  Une alarme cible indépendante tente aussi un réveil direct à cette heure si le pré-réveil a échoué.\n\n");
+        s.append("  Lancement Plex avec la langue et les sous-titres choisis.\n\n");
         if(endAt>0){s.append("Extinction estimée  ·  vers ").append(t.format(new Date(endAt))).append("\n");s.append("  La commande de veille réelle part à la fin effective du film.\n");}
         else s.append("Extinction  ·  à la fin réelle du film\n");
         s.append("\nAudio  ·  ").append(audio).append("\nSous-titres  ·  ").append(subs);
@@ -65,22 +74,29 @@ public class ScheduleDetailActivity extends Activity {
         try{
             AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);
 
-            // v1.6 robust alarms
-            Intent robust=new Intent(this,RobustWakeReceiver.class);
-            PendingIntent newPre=PendingIntent.getBroadcast(this,AppState.requestCodeForId(scheduleId+":pre"),robust,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-            PendingIntent newTarget=PendingIntent.getBroadcast(this,AppState.requestCodeForId(scheduleId+":target"),robust,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-            AlarmTools.cancel(am,newPre);
-            AlarmTools.cancel(am,newTarget);
+            // v1.7: proven WakeReceiver primary/retry/target + direct playback target.
+            cancelBroadcast(am, WakeReceiver.class, scheduleId+":wake");
+            cancelBroadcast(am, WakeReceiver.class, scheduleId+":retry");
+            cancelBroadcast(am, WakeReceiver.class, scheduleId+":target-wake");
+            cancelBroadcast(am, ScheduleReceiver.class, scheduleId+":direct");
 
-            // Compatibility: also remove alarms created by v1.4/v1.5.
+            // v1.6 compatibility.
+            cancelBroadcast(am, RobustWakeReceiver.class, scheduleId+":pre");
+            cancelBroadcast(am, RobustWakeReceiver.class, scheduleId+":target");
+
+            // v1.4/v1.5 compatibility.
             int oldReq=AppState.requestCodeForId(scheduleId);
             Intent oldPlay=new Intent(this,ScheduleReceiver.class);
-            PendingIntent oldPplay=PendingIntent.getBroadcast(this,oldReq,oldPlay,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-            AlarmTools.cancel(am,oldPplay);
+            PendingIntent oldPplay=PendingIntent.getBroadcast(this,oldReq,oldPlay,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);AlarmTools.cancel(am,oldPplay);
             Intent oldPre=new Intent(this,PreWakeReceiver.class);
-            PendingIntent oldPpre=PendingIntent.getBroadcast(this,oldReq+1,oldPre,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-            AlarmTools.cancel(am,oldPpre);
+            PendingIntent oldPpre=PendingIntent.getBroadcast(this,oldReq+1,oldPre,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);AlarmTools.cancel(am,oldPpre);
         }catch(Throwable ignored){}
         String title=schedule.optString("title","Film");AppState.removeSchedule(this,scheduleId);LogStore.add(this,"Planning","Séance supprimée : "+title);finish();
+    }
+
+    private void cancelBroadcast(AlarmManager am,Class<?> cls,String requestKey){
+        Intent i=new Intent(this,cls);
+        PendingIntent pi=PendingIntent.getBroadcast(this,AppState.requestCodeForId(requestKey),i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        AlarmTools.cancel(am,pi);
     }
 }
