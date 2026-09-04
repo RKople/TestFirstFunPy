@@ -65,6 +65,7 @@ public class MoviePickerActivity extends Activity {
                 List<PlexClient.Movie> movies = PlexClient.searchMovies(this,q);
                 runOnUiThread(() -> show(movies));
             } catch(Exception e){
+                LogStore.add(this,"Plex","Erreur bibliothèque : "+e.getMessage());
                 runOnUiThread(() -> status.setText("Erreur Plex : "+e.getMessage()));
             }
         }).start();
@@ -76,11 +77,14 @@ public class MoviePickerActivity extends Activity {
         int max = Math.min(100,movies.size());
         for(int i=0;i<max;i++){
             PlexClient.Movie m = movies.get(i);
-            String label = m.title + (m.year==null || m.year.isEmpty() ? "" : "  ·  "+m.year);
-            Button button = Ui.button(this,label,false);
+            StringBuilder label = new StringBuilder(m.title);
+            if(m.year!=null && !m.year.isEmpty()) label.append("  ·  ").append(m.year);
+            if(m.durationMs>0) label.append("  ·  ").append(duration(m.durationMs));
+            Button button = Ui.button(this,label.toString(),false);
             button.setTypeface(null, android.graphics.Typeface.NORMAL);
             button.setOnClickListener(v -> {
                 AppState.setSelectedMovie(this,m.json());
+                LogStore.add(this,"Film","Sélectionné : "+m.title);
                 Intent in = new Intent(this,MainActivity.class);
                 in.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 startActivity(in);
@@ -91,5 +95,12 @@ public class MoviePickerActivity extends Activity {
         if (movies.isEmpty()) {
             list.addView(Ui.muted(this,"Aucun résultat. Essaie un autre titre ou vérifie le serveur Plex sélectionné."), Ui.lp(-1,-2,this,8));
         }
+    }
+
+    private String duration(long ms){
+        long mins = Math.max(1, ms / 60000L);
+        long h = mins / 60;
+        long m = mins % 60;
+        return h > 0 ? h + " h " + (m < 10 ? "0" : "") + m : mins + " min";
     }
 }
