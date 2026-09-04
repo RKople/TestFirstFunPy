@@ -28,7 +28,7 @@ public class ScheduleActivity extends Activity {
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
         LinearLayout root = Ui.page(this);
-        Ui.header(root, this, "Automatisation", "Planning", "Le réveil est volontairement séparé du lancement : la TV s’allume sur noir en avance, reste éveillée, puis le film démarre à l’heure cible.");
+        Ui.header(root, this, "Automatisation", "Planning", "La TV est réveillée largement en avance avec le même mécanisme que le test Wake-up validé. Un écran d’attente affiche ensuite le compte à rebours jusqu’au film.");
 
         LinearLayout movieCard = Ui.card(this);
         movieCard.addView(Ui.eyebrow(this,"Film sélectionné"));
@@ -43,9 +43,9 @@ public class ScheduleActivity extends Activity {
         actionsCard.addView(Ui.eyebrow(this,"Nouvelle séance"));
         Button add = Ui.button(this,"Choisir la date et l’heure",true); add.setOnClickListener(v->pickDateTime());
         actionsCard.addView(add,Ui.lp(-1,Ui.dp(this,Ui.controlHeight(this)),this,8));
-        Button quick = Ui.button(this,"Test · réveil technique + film dans 2 min",false); quick.setOnClickListener(v->scheduleAt(System.currentTimeMillis()+120_000L,true));
+        Button quick = Ui.button(this,"Test complet · film dans 8 minutes",false); quick.setOnClickListener(v->scheduleAt(System.currentTimeMillis()+8*60_000L,true));
         actionsCard.addView(quick,Ui.lp(-1,Ui.dp(this,Ui.smallControlHeight(this)),this,7));
-        feedback = Ui.muted(this,""); feedback.setMaxLines(6); actionsCard.addView(feedback,Ui.lp(-1,-2,this,7));
+        feedback = Ui.muted(this,""); feedback.setMaxLines(8); actionsCard.addView(feedback,Ui.lp(-1,-2,this,7));
         root.addView(actionsCard,Ui.lp(-1,-2,this,Ui.compact(this)?10:14));
 
         LinearLayout listCard = Ui.card(this);
@@ -87,62 +87,97 @@ public class ScheduleActivity extends Activity {
 
     private void scheduleAt(long when, boolean test){
         JSONObject movie=AppState.selectedMovie(this); if(movie==null){feedback.setText("Sélectionne un film d’abord.");return;}
-        long now=System.currentTimeMillis(); if(when<=now+25_000L){feedback.setText("Choisis une heure au moins 30 secondes dans le futur.");return;}
+        long now=System.currentTimeMillis();
+        if(test && when < now + 7*60_000L){feedback.setText("Le test complet a besoin d’environ 8 minutes pour reproduire le vrai scénario.");return;}
+        if(!test && when <= now+2*60_000L){feedback.setText("Choisis une heure au moins 2 minutes dans le futur. Pour une TV éteinte, plus tu programmes en avance, plus le réveil est sûr.");return;}
+
         AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);
         if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S&&!am.canScheduleExactAlarms()){feedback.setText("Autorise d’abord les alarmes exactes depuis l’accueil.");return;}
 
         String id=(test?"test-":"")+UUID.randomUUID();
         int volume=AppState.defaultVolume(this);
-        long desiredPre=when-AppState.preWakeMinutes(this)*60_000L;
-        // For the 2-minute test we wake after 30 seconds, leaving 90 seconds of black-screen
-        // armed time before playback. Real sessions keep the configured 10-minute pre-wake.
-        long pre=test?now+30_000L:Math.max(desiredPre,now+30_000L);
-        if(pre>=when)pre=Math.max(now+10_000L,when-30_000L);
-        long duration=movie.optLong("durationMs",0L),endAt=duration>0?when+duration:0L;
         boolean sleepWhenDone=!test;
 
-        int preReq=AppState.requestCodeForId(id+":pre");
-        int targetReq=AppState.requestCodeForId(id+":target");
-
-        Intent preIntent=new Intent(this,RobustWakeReceiver.class);
-        preIntent.putExtra("phase","pre");
-        preIntent.putExtra("schedule_id",id);
-        preIntent.putExtra("movie",movie.toString());
-        preIntent.putExtra("volume",volume);
-        preIntent.putExtra("target_at",when);
-        preIntent.putExtra("expected_at",pre);
-        preIntent.putExtra("sleep_when_done",sleepWhenDone);
-        PendingIntent ppre=PendingIntent.getBroadcast(this,preReq,preIntent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-
-        Intent targetIntent=new Intent(this,RobustWakeReceiver.class);
-        targetIntent.putExtra("phase","target");
-        targetIntent.putExtra("schedule_id",id);
-        targetIntent.putExtra("movie",movie.toString());
-        targetIntent.putExtra("volume",volume);
-        targetIntent.putExtra("target_at",when);
-        targetIntent.putExtra("expected_at",when);
-        targetIntent.putExtra("sleep_when_done",sleepWhenDone);
-        PendingIntent ptarget=PendingIntent.getBroadcast(this,targetReq,targetIntent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-
-        // AlarmClock is intentionally used for both phases. It is stronger than a normal
-        // allow-while-idle exact alarm on Philips/Google TV standby. The target alarm is an
-        // independent fallback even if the pre-wake/ArmedActivity chain fails.
-        AlarmTools.setCritical(this,am,pre,ppre,AppState.requestCodeForId(id+":show-pre"));
-        AlarmTools.setCritical(this,am,when,ptarget,AppState.requestCodeForId(id+":show-target"));
-
-        if(!test){
-            try{JSONArray a=AppState.schedules(this);JSONObject o=new JSONObject();o.put("id",id);o.put("when",when);o.put("wakeAt",pre);o.put("title",movie.optString("title"));o.put("durationMs",duration);o.put("endAt",endAt);o.put("volume",volume);o.put("server",AppState.prefs(this).getString("plex_server_name","Plex"));o.put("audioLabel",movie.optString("audioLabel","Automatique"));o.put("subtitleLabel",movie.optString("subtitleLabel",movie.optBoolean("subtitlesOff",true)?"Aucun":"Automatiques"));a.put(o);AppState.setSchedules(this,a);LogStore.add(this,"Planning","Séance robuste ajoutée : "+movie.optString("title")+" à "+DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(new Date(when)));}catch(Exception ignored){}
+        // Crucial rule from real OLED810 tests:
+        // an alarm requested for +2 min physically wakes the panel around +5 min.
+        // Therefore the wake phase must be separated by several minutes from playback.
+        long wakeAt;
+        long retryAt;
+        if(test){
+            wakeAt=now+2*60_000L;       // same timing as the validated standalone Wake-up test
+            retryAt=now+5*60_000L;      // safety retry while there is still time before T+8
         } else {
-            LogStore.add(this,"Test","Test robuste armé · réveil technique à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(pre))+" · film à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when)));
+            long desired=when-AppState.preWakeMinutes(this)*60_000L; // normally T-10 min
+            wakeAt=Math.max(desired,now+2*60_000L);
+            retryAt=Math.min(when-2*60_000L,wakeAt+4*60_000L);
+            if(retryAt<=wakeAt+30_000L) retryAt=0L;
         }
 
-        StringBuilder result=new StringBuilder(test?"Test robuste armé ✓":"Séance ajoutée ✓");
-        result.append("\nRéveil technique (écran noir) : ").append(DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(pre)));
-        result.append("\nFilm : ").append(DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(when)));
-        result.append("\nUne seconde alarme indépendante sécurise aussi l’heure du film.");
-        if(endAt>0&&!test)result.append("\nVeille vers ").append(DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(endAt)));
+        long duration=movie.optLong("durationMs",0L),endAt=duration>0?when+duration:0L;
+
+        // 1) Primary wake: EXACTLY the same WakeReceiver and exact-alarm primitive as the
+        // standalone Wake-up test that works on this Philips.
+        PendingIntent wakePi = wakePending(id+":wake", id, movie, volume, when, wakeAt, sleepWhenDone, "waiting");
+        setExact(am,wakeAt,wakePi);
+
+        // 2) A second identical wake attempt, still before the film, protects against a
+        // delayed/missed first delivery. WaitingActivity is singleTask and simply resyncs.
+        if(retryAt>0L){
+            PendingIntent retryPi = wakePending(id+":retry", id, movie, volume, when, retryAt, sleepWhenDone, "waiting");
+            setExact(am,retryAt,retryPi);
+        }
+
+        // 3) At the target time, use the validated immediate playback path. When the wake
+        // succeeded, Android is already awake so this fires promptly.
+        Intent direct=new Intent(this,ScheduleReceiver.class);
+        direct.putExtra("movie",movie.toString()); direct.putExtra("volume",volume); direct.putExtra("schedule_id",id); direct.putExtra("sleep_when_done",sleepWhenDone);
+        PendingIntent directPi=PendingIntent.getBroadcast(this,AppState.requestCodeForId(id+":direct"),direct,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        setExact(am,when,directPi);
+
+        // 4) Independent target fallback: same proven wake sequence, then playback. If the
+        // TV is already awake it becomes a harmless duplicate (PlaybackLauncher de-dupes).
+        PendingIntent targetWake = wakePending(id+":target-wake", id, movie, volume, when, when, sleepWhenDone, "play");
+        setExact(am,when,targetWake);
+
+        long estimateDelay=AppState.prefs(this).getLong("last_wake_delay_ms",3*60_000L);
+        estimateDelay=Math.max(0L,Math.min(6*60_000L,estimateDelay));
+        long visibleEstimate=wakeAt+estimateDelay;
+
+        if(!test){
+            try{
+                JSONArray a=AppState.schedules(this);JSONObject o=new JSONObject();
+                o.put("id",id);o.put("when",when);o.put("wakeAt",wakeAt);o.put("retryAt",retryAt);o.put("visibleEstimateAt",visibleEstimate);
+                o.put("title",movie.optString("title"));o.put("durationMs",duration);o.put("endAt",endAt);o.put("volume",volume);
+                o.put("server",AppState.prefs(this).getString("plex_server_name","Plex"));o.put("audioLabel",movie.optString("audioLabel","Automatique"));
+                o.put("subtitleLabel",movie.optString("subtitleLabel",movie.optBoolean("subtitlesOff",true)?"Aucun":"Automatiques"));
+                a.put(o);AppState.setSchedules(this,a);
+                LogStore.add(this,"Planning","Séance v1.7 ajoutée : "+movie.optString("title")+" · réveil "+time(wakeAt)+" · film "+time(when));
+            }catch(Exception ignored){}
+        } else {
+            LogStore.add(this,"Test","Test complet armé · wake validé à "+time(wakeAt)+" · retry "+time(retryAt)+" · film "+time(when));
+        }
+
+        StringBuilder result=new StringBuilder(test?"Test complet armé ✓":"Séance ajoutée ✓");
+        result.append("\nCommande de réveil : ").append(time(wakeAt));
+        result.append("\nAllumage attendu vers : ").append(time(visibleEstimate)).append(" (estimation)");
+        if(retryAt>0)result.append("\nRéveil de secours : ").append(time(retryAt));
+        result.append("\nFilm : ").append(time(when));
+        result.append("\nQuand la TV s’allume, elle affiche le compte à rebours du film.");
+        if(endAt>0&&!test)result.append("\nVeille estimée : ").append(time(endAt));
         feedback.setText(result.toString()); refresh();
     }
 
+    private PendingIntent wakePending(String requestKey,String id,JSONObject movie,int volume,long target,long expected,boolean sleepWhenDone,String mode){
+        Intent i=new Intent(this,WakeReceiver.class);
+        i.putExtra("mode",mode);i.putExtra("schedule_id",id);i.putExtra("movie",movie.toString());i.putExtra("volume",volume);
+        i.putExtra("target_at",target);i.putExtra("expected_at",expected);i.putExtra("sleep_when_done",sleepWhenDone);
+        return PendingIntent.getBroadcast(this,AppState.requestCodeForId(requestKey),i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private void setExact(AlarmManager am,long when,PendingIntent pi){
+        if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.M)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,pi);else am.setExact(AlarmManager.RTC_WAKEUP,when,pi);
+    }
+
+    private String time(long ms){return DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(ms));}
     private String formatDuration(long ms){long mins=Math.max(1,ms/60000L),h=mins/60,m=mins%60;return h>0?h+" h "+(m<10?"0":"")+m:mins+" min";}
 }
