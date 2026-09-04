@@ -20,6 +20,8 @@ import org.json.JSONObject;
 public class PlayerActivity extends Activity {
     private ExoPlayer player;
     private PowerManager.WakeLock wakeLock;
+    private String title = "Film";
+    private boolean playLogged = false;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -36,6 +38,7 @@ public class PlayerActivity extends Activity {
             String raw = getIntent().getStringExtra("movie");
             JSONObject movie = raw == null ? AppState.selectedMovie(this) : new JSONObject(raw);
             if (movie == null) throw new Exception("Aucun film sélectionné");
+            title = movie.optString("title","Film");
             int vol = getIntent().getIntExtra("volume", AppState.defaultVolume(this));
             AudioManager am = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
             if (am != null) {
@@ -54,17 +57,28 @@ public class PlayerActivity extends Activity {
             player.setMediaItem(MediaItem.fromUri(url));
             player.addListener(new Player.Listener() {
                 @Override public void onPlaybackStateChanged(int state) {
-                    if (state == Player.STATE_ENDED && getIntent().getBooleanExtra("sleep_when_done", true)) SleepHelper.sleepNow(PlayerActivity.this);
+                    if (state == Player.STATE_READY && !playLogged) {
+                        playLogged = true;
+                        LogStore.add(PlayerActivity.this,"Lecture","Lecture démarrée : "+title);
+                    }
+                    if (state == Player.STATE_ENDED) {
+                        LogStore.add(PlayerActivity.this,"Lecture","Film terminé : "+title);
+                        if (getIntent().getBooleanExtra("sleep_when_done", true)) SleepHelper.sleepNow(PlayerActivity.this);
+                    }
                 }
                 @Override public void onPlayerError(PlaybackException error) {
-                    AppState.prefs(PlayerActivity.this).edit().putString("last_play_error", error.getMessage()).apply();
+                    String msg = error.getMessage()==null ? error.toString() : error.getMessage();
+                    AppState.prefs(PlayerActivity.this).edit().putString("last_play_error", msg).apply();
+                    LogStore.add(PlayerActivity.this,"Erreur","Lecture de "+title+" : "+msg);
                 }
             });
             player.prepare();
             player.play();
-            AppState.prefs(this).edit().putLong("last_play_started", System.currentTimeMillis()).putString("last_play_title", movie.optString("title")).apply();
+            AppState.prefs(this).edit().putLong("last_play_started", System.currentTimeMillis()).putString("last_play_title", title).apply();
+            LogStore.add(this,"Lecture","Préparation du film : "+title+" · volume "+vol+" %");
         } catch (Exception e) {
             AppState.prefs(this).edit().putString("last_play_error", e.toString()).apply();
+            LogStore.add(this,"Erreur","Impossible de préparer le film : "+e);
             finish();
         }
     }
