@@ -9,26 +9,24 @@
 
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:icon="@android:drawable/ic_media_play"
         android:label="Shabbat TV"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
-        <receiver
-            android:name=".WakeReceiver"
-            android:enabled="true"
-            android:exported="false" />
+        <receiver android:name=".WakeReceiver" android:enabled="true" android:exported="false" />
+        <receiver android:name=".PreWakeReceiver" android:enabled="true" android:exported="false" />
+        <receiver android:name=".ScheduleReceiver" android:enabled="true" android:exported="false" />
 
-        <activity
-            android:name=".PlaybackActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:screenOrientation="landscape" />
+        <activity android:name=".PlayerActivity" android:exported="false" android:launchMode="singleTask" android:screenOrientation="landscape" />
+        <activity android:name=".SleepTestActivity" android:exported="false" android:screenOrientation="landscape" />
+        <activity android:name=".TestActivity" android:exported="false" android:screenOrientation="landscape" />
+        <activity android:name=".ScheduleActivity" android:exported="false" android:screenOrientation="landscape" />
+        <activity android:name=".MoviePickerActivity" android:exported="false" android:screenOrientation="landscape" />
+        <activity android:name=".PlexSetupActivity" android:exported="false" android:screenOrientation="landscape" />
+        <activity android:name=".PlaybackActivity" android:excludeFromRecents="true" android:exported="false" android:launchMode="singleTask" android:screenOrientation="landscape" />
 
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:screenOrientation="landscape">
+        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
