@@ -9,7 +9,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.view.Gravity;
-import android.view.View;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -49,8 +48,8 @@ public class WaitingActivity extends Activity {
 
             // Very small position drift every 30 s: subtle on screen and OLED-friendly.
             int step = (int)((now / 30_000L) % 4L);
-            float dx = Ui.dp(this, step == 0 ? -3 : step == 2 ? 3 : 0);
-            float dy = Ui.dp(this, step == 1 ? -2 : step == 3 ? 2 : 0);
+            float dx = Ui.dp(WaitingActivity.this, step == 0 ? -3 : step == 2 ? 3 : 0);
+            float dy = Ui.dp(WaitingActivity.this, step == 1 ? -2 : step == 3 ? 2 : 0);
             countdown.setTranslationX(dx);
             countdown.setTranslationY(dy);
             handler.postDelayed(this, 1000L);
