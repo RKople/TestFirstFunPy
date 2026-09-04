@@ -24,7 +24,7 @@ public class TestActivity extends Activity {
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
         LinearLayout root=Ui.page(this);
-        Ui.header(root,this,"Diagnostic","Tests","Teste séparément le réveil, la lecture Plex et la vraie mise en veille Philips.");
+        Ui.header(root,this,"Diagnostic","Tests","Les tests isolent les fonctions validées : réveil Philips, lecture Plex, scénario complet et veille réelle.");
 
         LinearLayout philips=Ui.card(this);
         philips.addView(Ui.eyebrow(this,"Extinction Philips"));
@@ -39,7 +39,7 @@ public class TestActivity extends Activity {
         row1.addView(wake,w()); row1.addView(play,wg()); root.addView(row1,Ui.lp(-1,Ui.dp(this,Ui.controlHeight(this)),this,10));
 
         LinearLayout row2=new LinearLayout(this); row2.setOrientation(LinearLayout.HORIZONTAL);
-        Button scheduled=Ui.button(this,"Réveil robuste + film · 2 min",false); scheduled.setOnClickListener(v->scheduledPlayTest());
+        Button scheduled=Ui.button(this,"Test complet · film dans 8 min",false); scheduled.setOnClickListener(v->scheduledPlayTest());
         Button sleep=Ui.button(this,"Veille réelle · maintenant",false); sleep.setOnClickListener(v->SleepHelper.sleepNow(this,(ok,msg)->status.setText((ok?"✓ ":"✕ ")+msg)));
         row2.addView(scheduled,w()); row2.addView(sleep,wg()); root.addView(row2,Ui.lp(-1,Ui.dp(this,Ui.controlHeight(this)),this,6));
 
@@ -63,15 +63,22 @@ public class TestActivity extends Activity {
         philipsState.setText(PhilipsTvClient.isPaired(this)?"Associé ✓ · la commande Standby Philips sera utilisée":"Non associé · nécessaire pour une extinction réelle");
         philipsState.setTextColor(PhilipsTvClient.isPaired(this)?Ui.GOOD:Ui.MUTED);
         String wake=getSharedPreferences("wake_diag",MODE_PRIVATE).getString("diag_log",""); String playErr=AppState.prefs(this).getString("last_play_error",""); String sleep=AppState.prefs(this).getString("last_sleep_diag","");
-        String robustErr=AppState.prefs(this).getString("last_robust_wake_error","");
-        status.setText("Réveil\n"+(wake.isEmpty()?"Aucun test":wake)+
-                "\n\nChaîne réveil + film\n"+(robustErr.isEmpty()?"Aucune erreur robuste enregistrée":robustErr)+
+        status.setText("Réveil Philips\n"+(wake.isEmpty()?"Aucun test":wake)+
                 "\n\nLecture Plex\n"+(playErr.isEmpty()?"Aucune erreur enregistrée":playErr)+
                 "\n\nVeille\n"+(sleep.isEmpty()?"Aucun test":sleep));
     }
 
-    private void playNow(){JSONObject m=AppState.selectedMovie(this);if(m==null){status.setText("Sélectionne d’abord un film dans Films.");return;}LogStore.add(this,"Test","Lecture immédiate : "+m.optString("title","Film"));Intent i=new Intent(this,PlayerActivity.class);i.putExtra("movie",m.toString());i.putExtra("volume",AppState.defaultVolume(this));i.putExtra("sleep_when_done",false);startActivity(i);}
+    private void playNow(){
+        JSONObject m=AppState.selectedMovie(this);if(m==null){status.setText("Sélectionne d’abord un film dans Films.");return;}
+        LogStore.add(this,"Test","Lecture immédiate : "+m.optString("title","Film"));
+        Intent i=new Intent(this,PlayerActivity.class);i.putExtra("movie",m.toString());i.putExtra("volume",AppState.defaultVolume(this));i.putExtra("sleep_when_done",false);startActivity(i);
+    }
 
+    /**
+     * Realistic full-chain test based only on the two functions already validated by the user:
+     * - exact WakeReceiver at +2 min (usually physically visible around +5 min on this TV)
+     * - normal immediate Plex launch at +8 min while the TV is already awake.
+     */
     private void scheduledPlayTest(){
         JSONObject movie=AppState.selectedMovie(this);
         if(movie==null){status.setText("Sélectionne d’abord un film dans Films.");return;}
@@ -79,39 +86,43 @@ public class TestActivity extends Activity {
         if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){status.setText("Autorise les alarmes exactes depuis l’accueil.");return;}
 
         long now=System.currentTimeMillis();
-        long target=now+120_000L;
-        long pre=now+30_000L;
+        long wakeAt=now+2*60_000L;
+        long retryAt=now+5*60_000L;
+        long target=now+8*60_000L;
         String id="test-"+UUID.randomUUID();
         int volume=AppState.defaultVolume(this);
 
-        Intent preIntent=new Intent(this,RobustWakeReceiver.class);
-        preIntent.putExtra("phase","pre");
-        preIntent.putExtra("schedule_id",id);
-        preIntent.putExtra("movie",movie.toString());
-        preIntent.putExtra("volume",volume);
-        preIntent.putExtra("target_at",target);
-        preIntent.putExtra("expected_at",pre);
-        preIntent.putExtra("sleep_when_done",false);
-        PendingIntent ppre=PendingIntent.getBroadcast(this,AppState.requestCodeForId(id+":pre"),preIntent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent wake=wakePi(id+":wake",id,movie,volume,target,wakeAt,"waiting");
+        PendingIntent retry=wakePi(id+":retry",id,movie,volume,target,retryAt,"waiting");
+        setExact(am,wakeAt,wake);
+        setExact(am,retryAt,retry);
 
-        Intent targetIntent=new Intent(this,RobustWakeReceiver.class);
-        targetIntent.putExtra("phase","target");
-        targetIntent.putExtra("schedule_id",id);
-        targetIntent.putExtra("movie",movie.toString());
-        targetIntent.putExtra("volume",volume);
-        targetIntent.putExtra("target_at",target);
-        targetIntent.putExtra("expected_at",target);
-        targetIntent.putExtra("sleep_when_done",false);
-        PendingIntent ptarget=PendingIntent.getBroadcast(this,AppState.requestCodeForId(id+":target"),targetIntent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        Intent direct=new Intent(this,ScheduleReceiver.class);
+        direct.putExtra("schedule_id",id);direct.putExtra("movie",movie.toString());direct.putExtra("volume",volume);direct.putExtra("sleep_when_done",false);
+        PendingIntent directPi=PendingIntent.getBroadcast(this,AppState.requestCodeForId(id+":direct"),direct,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        setExact(am,target,directPi);
 
-        AlarmTools.setCritical(this,am,pre,ppre,AppState.requestCodeForId(id+":show-pre"));
-        AlarmTools.setCritical(this,am,target,ptarget,AppState.requestCodeForId(id+":show-target"));
+        PendingIntent targetWake=wakePi(id+":target-wake",id,movie,volume,target,target,"play");
+        setExact(am,target,targetWake);
 
-        LogStore.add(this,"Test","Chaîne robuste armée · réveil écran noir à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(pre))+" · film à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(target)));
-        status.setText("Test robuste armé ✓\nÉteins maintenant la TV.\nRéveil technique écran noir dans ~30 s.\nFilm à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(target))+".\nL’alarme du film est indépendante : si le pré-réveil échoue, elle tente elle-même de réveiller la TV.");
+        LogStore.add(this,"Test","Test complet v1.7 · wake validé "+time(wakeAt)+" · secours "+time(retryAt)+" · film "+time(target));
+        status.setText("Test complet armé ✓\nÉteins maintenant la TV.\n\n1. Wake-up demandé à "+time(wakeAt)+" avec EXACTEMENT le même mécanisme que le bouton Wake-up.\n2. La TV devrait s’allumer vers ~"+time(wakeAt+3*60_000L)+" et afficher le compte à rebours.\n3. Film à "+time(target)+" avec le même lancement que “Lire le film maintenant”.\n\nUn réveil de secours est aussi prévu à "+time(retryAt)+".");
     }
 
-    private void wakeTest(){AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){status.setText("Autorise les alarmes exactes depuis l’accueil.");return;}long when=System.currentTimeMillis()+120_000L;Intent i=new Intent(this,WakeReceiver.class);PendingIntent p=PendingIntent.getBroadcast(this,707,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,p);else am.setExact(AlarmManager.RTC_WAKEUP,when,p);LogStore.add(this,"Test","Wake-up programmé à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when)));status.setText("Wake-up armé pour "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when))+".\nÉteins maintenant la TV.");}
+    private PendingIntent wakePi(String requestKey,String id,JSONObject movie,int volume,long target,long expected,String mode){
+        Intent i=new Intent(this,WakeReceiver.class);i.putExtra("mode",mode);i.putExtra("schedule_id",id);i.putExtra("movie",movie.toString());i.putExtra("volume",volume);i.putExtra("target_at",target);i.putExtra("expected_at",expected);i.putExtra("sleep_when_done",false);
+        return PendingIntent.getBroadcast(this,AppState.requestCodeForId(requestKey),i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+    }
 
-    private void sleepInMinute(){AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);long when=System.currentTimeMillis()+60_000L;Intent i=new Intent(this,SleepTestActivity.class);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);PendingIntent p=PendingIntent.getActivity(this,708,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,p);else am.setExact(AlarmManager.RTC_WAKEUP,when,p);LogStore.add(this,"Test","Veille réelle programmée à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when)));status.setText("Mise en veille réelle prévue à "+DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when))+".");}
+    private void wakeTest(){
+        AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);if(Build.VERSION.SDK_INT>=31&&!am.canScheduleExactAlarms()){status.setText("Autorise les alarmes exactes depuis l’accueil.");return;}
+        long when=System.currentTimeMillis()+120_000L;Intent i=new Intent(this,WakeReceiver.class);i.putExtra("expected_at",when);
+        PendingIntent p=PendingIntent.getBroadcast(this,707,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);setExact(am,when,p);
+        LogStore.add(this,"Test","Wake-up programmé à "+time(when));status.setText("Wake-up armé pour "+time(when)+".\nÉteins maintenant la TV.\nSur cette Philips, l’allumage physique observé arrive environ 3 minutes après l’heure théorique de l’alarme.");
+    }
+
+    private void sleepInMinute(){AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);long when=System.currentTimeMillis()+60_000L;Intent i=new Intent(this,SleepTestActivity.class);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);PendingIntent p=PendingIntent.getActivity(this,708,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);setExact(am,when,p);LogStore.add(this,"Test","Veille réelle programmée à "+time(when));status.setText("Mise en veille réelle prévue à "+time(when)+".");}
+
+    private void setExact(AlarmManager am,long when,PendingIntent pi){if(Build.VERSION.SDK_INT>=23)am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,pi);else am.setExact(AlarmManager.RTC_WAKEUP,when,pi);}
+    private String time(long ms){return DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(ms));}
 }
