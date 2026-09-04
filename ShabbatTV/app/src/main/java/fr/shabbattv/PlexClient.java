@@ -36,7 +36,7 @@ public final class PlexClient {
     private static void headers(Context c, HttpURLConnection h, String token) {
         h.setRequestProperty("Accept", "application/json");
         h.setRequestProperty("X-Plex-Product", "Shabbat TV");
-        h.setRequestProperty("X-Plex-Version", "1.0");
+        h.setRequestProperty("X-Plex-Version", "1.1");
         h.setRequestProperty("X-Plex-Client-Identifier", AppState.clientId(c));
         h.setRequestProperty("X-Plex-Platform", "Android TV");
         h.setRequestProperty("X-Plex-Device-Name", "Shabbat TV");
@@ -44,20 +44,36 @@ public final class PlexClient {
     }
 
     public static Pin createPin(Context c) throws Exception {
-        URL u = new URL("https://plex.tv/api/v2/pins?strong=true");
+        // plex.tv/link expects the classic short PIN. strong=true returns a long code
+        // meant for newer client auth flows and cannot be entered on the 4-character page.
+        URL u = new URL("https://plex.tv/api/v2/pins");
         HttpURLConnection h = (HttpURLConnection) u.openConnection();
-        h.setRequestMethod("POST"); h.setDoOutput(true); headers(c, h, "");
-        h.setFixedLengthStreamingMode(0); try (OutputStream os = h.getOutputStream()) { }
+        h.setRequestMethod("POST");
+        h.setDoOutput(true);
+        h.setConnectTimeout(15000);
+        h.setReadTimeout(15000);
+        headers(c, h, "");
+        h.setFixedLengthStreamingMode(0);
+        try (OutputStream os = h.getOutputStream()) { }
         JSONObject j = new JSONObject(read(h));
-        Pin p = new Pin(); p.id = j.getLong("id"); p.code = j.getString("code"); p.token = j.optString("authToken", "");
+        Pin p = new Pin();
+        p.id = j.getLong("id");
+        p.code = j.getString("code");
+        p.token = j.optString("authToken", "");
         return p;
     }
 
     public static Pin checkPin(Context c, long id) throws Exception {
         URL u = new URL("https://plex.tv/api/v2/pins/" + id);
-        HttpURLConnection h = (HttpURLConnection) u.openConnection(); headers(c, h, "");
+        HttpURLConnection h = (HttpURLConnection) u.openConnection();
+        h.setConnectTimeout(15000);
+        h.setReadTimeout(15000);
+        headers(c, h, "");
         JSONObject j = new JSONObject(read(h));
-        Pin p = new Pin(); p.id = id; p.code = j.optString("code", ""); p.token = j.optString("authToken", "");
+        Pin p = new Pin();
+        p.id = id;
+        p.code = j.optString("code", "");
+        p.token = j.optString("authToken", "");
         return p;
     }
 
