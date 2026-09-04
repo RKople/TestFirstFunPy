@@ -66,11 +66,12 @@ public class ScheduleDetailActivity extends Activity {
 
         StringBuilder s = new StringBuilder();
         s.append("Date  ·  ").append(d.format(new Date(when))).append("\n\n");
-        s.append("Pré-réveil TV  ·  ").append(t.format(new Date(wakeAt))).append("\n");
-        s.append("Début du film  ·  ").append(t.format(new Date(when))).append("\n");
+        s.append("Pré-réveil interne  ·  ").append(t.format(new Date(wakeAt))).append("\n");
+        s.append("  Écran encore éteint : Shabbat TV réveille Android en avance pour fiabiliser l’horaire.\n\n");
+        s.append("Allumage TV + film  ·  ").append(t.format(new Date(when))).append("\n");
         if (endAt > 0) {
             s.append("Extinction prévue  ·  vers ").append(t.format(new Date(endAt))).append("\n");
-            s.append("La TV se met en veille dès que Plex signale réellement la fin du film.\n");
+            s.append("  La TV se met en veille dès que le lecteur signale réellement la fin du film.\n");
         } else {
             s.append("Extinction  ·  à la fin réelle du film\n");
         }
