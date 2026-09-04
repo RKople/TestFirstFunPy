@@ -30,7 +30,7 @@ public class MainActivity extends Activity {
         heading.addView(Ui.eyebrow(this, "Accueil"));
         heading.addView(Ui.title(this, "Shabbat TV"), Ui.lp(-1,-2,this,3));
         top.addView(heading, new LinearLayout.LayoutParams(0,-2,1));
-        top.addView(Ui.pill(this, "v1.3", false));
+        top.addView(Ui.pill(this, "v1.4", false));
         root.addView(top);
         root.addView(Ui.subtitle(this, "Prépare les films et les horaires. Ensuite la TV s’occupe du reste."), Ui.lp(-1,-2,this,5));
 
@@ -49,21 +49,28 @@ public class MainActivity extends Activity {
         TextView section = Ui.eyebrow(this, "Configuration");
         root.addView(section, Ui.lp(-1,-2,this,Ui.compact(this)?16:24));
 
-        LinearLayout nav = new LinearLayout(this);
-        nav.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout nav1 = new LinearLayout(this);
+        nav1.setOrientation(LinearLayout.HORIZONTAL);
         Button plex = Ui.button(this, "Plex", true);
         plex.setOnClickListener(v -> startActivity(new Intent(this, PlexSetupActivity.class)));
         Button movies = Ui.button(this, "Films", false);
         movies.setOnClickListener(v -> startActivity(new Intent(this, MoviePickerActivity.class)));
         Button plan = Ui.button(this, "Planning", false);
         plan.setOnClickListener(v -> startActivity(new Intent(this, ScheduleActivity.class)));
+        nav1.addView(plex, weight());
+        nav1.addView(movies, gapWeight());
+        nav1.addView(plan, gapWeight());
+        root.addView(nav1, Ui.lp(-1, Ui.dp(this, Ui.controlHeight(this)), this, 9));
+
+        LinearLayout nav2 = new LinearLayout(this);
+        nav2.setOrientation(LinearLayout.HORIZONTAL);
         Button tests = Ui.button(this, "Tests", false);
         tests.setOnClickListener(v -> startActivity(new Intent(this, TestActivity.class)));
-        nav.addView(plex, weight());
-        nav.addView(movies, gapWeight());
-        nav.addView(plan, gapWeight());
-        nav.addView(tests, gapWeight());
-        root.addView(nav, Ui.lp(-1, Ui.dp(this, Ui.controlHeight(this)), this, 9));
+        Button logs = Ui.button(this, "Logs", false);
+        logs.setOnClickListener(v -> startActivity(new Intent(this, LogsActivity.class)));
+        nav2.addView(tests, weight());
+        nav2.addView(logs, gapWeight());
+        root.addView(nav2, Ui.lp(-1, Ui.dp(this, Ui.smallControlHeight(this)), this, 7));
 
         LinearLayout note = Ui.card(this);
         TextView noteTitle = Ui.body(this, "Réveil automatique prêt");
@@ -105,7 +112,7 @@ public class MainActivity extends Activity {
         if(plexState==null)return;
         boolean plex = AppState.plexConnected(this);
         JSONObject m = AppState.selectedMovie(this);
-        int n = AppState.schedules(this).length();
+        int n = AppState.schedules(this).length(); // automatically removes past sessions
         String server = AppState.prefs(this).getString("plex_server_name","Plex");
         plexState.setText(plex ? server : "À connecter");
         plexState.setTextColor(plex ? Ui.GOOD : Ui.TEXT);
