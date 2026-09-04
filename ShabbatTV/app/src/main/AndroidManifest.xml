@@ -20,6 +20,8 @@
 
         <activity android:name=".PlayerActivity" android:exported="false" android:launchMode="singleTask" android:screenOrientation="landscape" />
         <activity android:name=".SleepTestActivity" android:exported="false" android:screenOrientation="landscape" />
+        <activity android:name=".LogsActivity" android:exported="false" android:screenOrientation="landscape" />
+        <activity android:name=".ScheduleDetailActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name=".TestActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name=".ScheduleActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name=".MoviePickerActivity" android:exported="false" android:screenOrientation="landscape" />
