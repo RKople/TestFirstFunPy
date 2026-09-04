@@ -43,9 +43,29 @@ public final class AppState {
         prefs(c).edit().putString("selected_movie", movie == null ? "" : movie.toString()).apply();
     }
 
-    public static JSONArray schedules(Context c) {
+    private static JSONArray rawSchedules(Context c) {
         String raw = prefs(c).getString("schedules", "[]");
         try { return new JSONArray(raw); } catch (Exception e) { return new JSONArray(); }
+    }
+
+    /** Returns only future sessions. Past sessions disappear automatically. */
+    public static JSONArray schedules(Context c) {
+        JSONArray src = rawSchedules(c);
+        JSONArray keep = new JSONArray();
+        long now = System.currentTimeMillis();
+        boolean changed = false;
+        for (int i = 0; i < src.length(); i++) {
+            JSONObject o = src.optJSONObject(i);
+            if (o == null) { changed = true; continue; }
+            long when = o.optLong("when", 0L);
+            if (when > 0 && when < now) {
+                changed = true;
+                continue;
+            }
+            keep.put(o);
+        }
+        if (changed) setSchedules(c, keep);
+        return keep;
     }
 
     public static void setSchedules(Context c, JSONArray arr) {
@@ -60,6 +80,28 @@ public final class AppState {
             if (o != null && id.equals(o.optString("id"))) return o;
         }
         return null;
+    }
+
+    public static boolean removeSchedule(Context c, String id) {
+        if (id == null || id.isEmpty()) return false;
+        JSONArray src = rawSchedules(c);
+        JSONArray keep = new JSONArray();
+        boolean removed = false;
+        for (int i = 0; i < src.length(); i++) {
+            JSONObject o = src.optJSONObject(i);
+            if (o != null && id.equals(o.optString("id"))) {
+                removed = true;
+                continue;
+            }
+            if (o != null) keep.put(o);
+        }
+        if (removed) setSchedules(c, keep);
+        return removed;
+    }
+
+    public static int requestCodeForId(String id) {
+        if (id == null) return 1;
+        return id.hashCode() & 0x7fffffff;
     }
 
     public static int preWakeMinutes(Context c) {
