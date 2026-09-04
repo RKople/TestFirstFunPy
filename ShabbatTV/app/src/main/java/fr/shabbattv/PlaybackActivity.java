@@ -1,7 +1,6 @@
 package fr.shabbattv;
 
 import android.app.Activity;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.view.Gravity;
@@ -43,27 +42,27 @@ public class PlaybackActivity extends Activity {
             } catch (Throwable ignored) {}
         }
 
-        LinearLayout root = new LinearLayout(this);
+        LinearLayout root = Ui.page(this);
         root.setGravity(Gravity.CENTER);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.BLACK);
 
-        TextView big = new TextView(this);
-        big.setText("SHABBAT TV v0.4 — WAKE TEST");
-        big.setTextColor(Color.WHITE);
-        big.setTextSize(38f);
-        big.setGravity(Gravity.CENTER);
-        root.addView(big, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout card = Ui.card(this);
+        TextView eyebrow = Ui.eyebrow(this,"Test de réveil");
+        eyebrow.setGravity(Gravity.CENTER);
+        card.addView(eyebrow);
+        TextView title = Ui.title(this,"TV réveillée ✓");
+        title.setGravity(Gravity.CENTER);
+        title.setTextColor(Ui.GOOD);
+        card.addView(title,Ui.lp(-1,-2,this,5));
+        TextView text = Ui.muted(this,
+                "Le test s’est déclenché. Si cet écran est apparu sans télécommande, le réveil automatique a fonctionné.\n\n" +
+                "Pour le détail technique, rouvre ensuite Shabbat TV → Tests.");
+        text.setGravity(Gravity.CENTER);
+        card.addView(text,Ui.lp(-1,-2,this,7));
 
-        TextView small = new TextView(this);
-        small.setText("Le test s'est déclenché.\nSi tu vois cet écran sans avoir utilisé la télécommande, une méthode de réveil a fonctionné.\nSinon, rallume manuellement puis rouvre Shabbat TV pour lire le diagnostic détaillé.");
-        small.setTextColor(Color.LTGRAY);
-        small.setTextSize(21f);
-        small.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, 28, 0, 0);
-        root.addView(small, lp);
-
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1,-2);
+        int maxWidthDp = Ui.compact(this) ? Math.max(520, Ui.widthDp(this)-120) : 820;
+        cp.width = Ui.dp(this, Math.min(maxWidthDp, Ui.widthDp(this)-Math.max(56,Math.round(Ui.widthDp(this)*.10f))));
+        root.addView(card,cp);
         setContentView(root);
     }
 }
