@@ -49,6 +49,7 @@ public class ScheduleDetailActivity extends Activity {
         s.append("TV réveillée  ·  ").append(t.format(new Date(wakeAt))).append("\n");
         s.append("  La dalle est allumée sur un écran noir afin de garder Android éveillé et fiabiliser l’heure de départ.\n\n");
         s.append("Début du film  ·  ").append(t.format(new Date(when))).append("\n");
+        s.append("  Une alarme cible indépendante tente aussi un réveil direct à cette heure si le pré-réveil a échoué.\n\n");
         if(endAt>0){s.append("Extinction estimée  ·  vers ").append(t.format(new Date(endAt))).append("\n");s.append("  La commande de veille réelle part à la fin effective du film.\n");}
         else s.append("Extinction  ·  à la fin réelle du film\n");
         s.append("\nAudio  ·  ").append(audio).append("\nSous-titres  ·  ").append(subs);
@@ -61,9 +62,24 @@ public class ScheduleDetailActivity extends Activity {
 
     private void deleteSchedule() {
         if(schedule==null||scheduleId==null){finish();return;}
-        try{AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);int req=AppState.requestCodeForId(scheduleId);
-            Intent play=new Intent(this,ScheduleReceiver.class);PendingIntent pplay=PendingIntent.getBroadcast(this,req,play,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);am.cancel(pplay);pplay.cancel();
-            Intent pre=new Intent(this,PreWakeReceiver.class);PendingIntent ppre=PendingIntent.getBroadcast(this,req+1,pre,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);am.cancel(ppre);ppre.cancel();
+        try{
+            AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);
+
+            // v1.6 robust alarms
+            Intent robust=new Intent(this,RobustWakeReceiver.class);
+            PendingIntent newPre=PendingIntent.getBroadcast(this,AppState.requestCodeForId(scheduleId+":pre"),robust,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+            PendingIntent newTarget=PendingIntent.getBroadcast(this,AppState.requestCodeForId(scheduleId+":target"),robust,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+            AlarmTools.cancel(am,newPre);
+            AlarmTools.cancel(am,newTarget);
+
+            // Compatibility: also remove alarms created by v1.4/v1.5.
+            int oldReq=AppState.requestCodeForId(scheduleId);
+            Intent oldPlay=new Intent(this,ScheduleReceiver.class);
+            PendingIntent oldPplay=PendingIntent.getBroadcast(this,oldReq,oldPlay,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+            AlarmTools.cancel(am,oldPplay);
+            Intent oldPre=new Intent(this,PreWakeReceiver.class);
+            PendingIntent oldPpre=PendingIntent.getBroadcast(this,oldReq+1,oldPre,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+            AlarmTools.cancel(am,oldPpre);
         }catch(Throwable ignored){}
         String title=schedule.optString("title","Film");AppState.removeSchedule(this,scheduleId);LogStore.add(this,"Planning","Séance supprimée : "+title);finish();
     }
