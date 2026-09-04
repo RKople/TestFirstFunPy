@@ -31,6 +31,7 @@ public final class PlexClient {
 
     public static final class Movie {
         public String title, year, ratingKey, thumb, partKey;
+        public long durationMs;
         public JSONObject json() {
             JSONObject o = new JSONObject();
             try {
@@ -39,6 +40,7 @@ public final class PlexClient {
                 o.put("ratingKey", ratingKey);
                 o.put("thumb", thumb);
                 o.put("partKey", partKey);
+                o.put("durationMs", durationMs);
             } catch (Exception ignored) {}
             return o;
         }
@@ -49,7 +51,7 @@ public final class PlexClient {
     private static void headers(Context c, HttpURLConnection h, String token) {
         h.setRequestProperty("Accept", "application/json");
         h.setRequestProperty("X-Plex-Product", "Shabbat TV");
-        h.setRequestProperty("X-Plex-Version", "1.2");
+        h.setRequestProperty("X-Plex-Version", "1.4");
         h.setRequestProperty("X-Plex-Client-Identifier", AppState.clientId(c));
         h.setRequestProperty("X-Plex-Platform", "Android TV");
         h.setRequestProperty("X-Plex-Device-Name", "Shabbat TV");
@@ -88,7 +90,6 @@ public final class PlexClient {
         return p;
     }
 
-    /** Returns every Plex Media Server the account can access, including shared servers. */
     public static List<Server> listServers(Context c, String accountToken) throws Exception {
         URL u = new URL("https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1");
         HttpURLConnection h = (HttpURLConnection) u.openConnection();
@@ -120,10 +121,6 @@ public final class PlexClient {
         return out;
     }
 
-    /**
-     * Selects one server and tests all advertised routes. This is important for shared servers:
-     * each shared server has its own access token and may only be reachable through its remote/relay URI.
-     */
     public static String selectServer(Context c, String accountToken, Server server) throws Exception {
         List<JSONObject> candidates = new ArrayList<>();
         for (int i = 0; i < server.connections.length(); i++) {
@@ -157,10 +154,10 @@ public final class PlexClient {
                 .putString("plex_server_machine_id", server.machineId)
                 .putBoolean("plex_server_owned", server.owned)
                 .apply();
+        LogStore.add(c, "Plex", "Serveur sélectionné : " + server.name);
         return selected;
     }
 
-    // Kept for compatibility: selects the first reachable server, not blindly the owned one.
     public static void discoverServer(Context c, String accountToken) throws Exception {
         List<Server> servers = listServers(c, accountToken);
         if (servers.isEmpty()) throw new Exception("Aucun serveur Plex trouvé");
@@ -182,8 +179,8 @@ public final class PlexClient {
         boolean relay = x.optBoolean("relay", false);
         int score = 0;
         if (!uri.startsWith("https://")) score += 20;
-        if (local) score += 30;      // remote TV: local RFC1918 routes are usually useless
-        if (relay) score += 10;      // prefer a direct remote route, but relay is a valid fallback
+        if (local) score += 30;
+        if (relay) score += 10;
         return score;
     }
 
@@ -266,6 +263,9 @@ public final class PlexClient {
                 current.year = p.getAttributeValue(null, "year");
                 current.ratingKey = p.getAttributeValue(null, "ratingKey");
                 current.thumb = p.getAttributeValue(null, "thumb");
+                String duration = p.getAttributeValue(null, "duration");
+                try { current.durationMs = duration == null ? 0L : Long.parseLong(duration); }
+                catch (Exception ignored) { current.durationMs = 0L; }
             } else if (e == XmlPullParser.START_TAG && "Part".equals(p.getName()) && current != null && current.partKey == null) {
                 current.partKey = p.getAttributeValue(null, "key");
             } else if (e == XmlPullParser.END_TAG && "Video".equals(p.getName()) && current != null) {
