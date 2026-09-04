@@ -19,7 +19,7 @@ public class MoviePickerActivity extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         LinearLayout root = Ui.page(this);
-        Ui.header(root, this, "Bibliothèque", "Films", "Recherche sur le serveur Plex sélectionné, puis choisis le film à programmer.");
+        Ui.header(root, this, "Bibliothèque", "Films", "Recherche sur le serveur Plex sélectionné. Après le film, choisis sa langue et ses sous-titres.");
 
         LinearLayout searchRow = new LinearLayout(this);
         searchRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -38,36 +38,22 @@ public class MoviePickerActivity extends Activity {
         root.addView(status, Ui.lp(-1,-2,this,8));
 
         ScrollView sv = new ScrollView(this);
-        sv.setFillViewport(false);
-        sv.setSmoothScrollingEnabled(true);
-        list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
+        sv.setFillViewport(false); sv.setSmoothScrollingEnabled(true);
+        list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL);
         sv.addView(list, new ScrollView.LayoutParams(-1,-2));
         LinearLayout.LayoutParams svp = new LinearLayout.LayoutParams(-1,0,1);
-        svp.setMargins(0, Ui.dp(this,6), 0, 0);
-        root.addView(sv, svp);
+        svp.setMargins(0, Ui.dp(this,6), 0, 0); root.addView(sv, svp);
 
-        setContentView(root);
-        load();
+        setContentView(root); load();
     }
 
     private void load() {
-        if(!AppState.plexConnected(this)){
-            status.setText("Plex n’est pas encore connecté. Reviens à l’accueil puis ouvre Plex.");
-            return;
-        }
+        if(!AppState.plexConnected(this)){status.setText("Plex n’est pas encore connecté. Reviens à l’accueil puis ouvre Plex.");return;}
         String server = AppState.prefs(this).getString("plex_server_name","Plex");
-        status.setText("Chargement depuis “" + server + "”…");
-        list.removeAllViews();
-        String q = search.getText().toString();
+        status.setText("Chargement depuis “" + server + "”…"); list.removeAllViews(); String q = search.getText().toString();
         new Thread(() -> {
-            try {
-                List<PlexClient.Movie> movies = PlexClient.searchMovies(this,q);
-                runOnUiThread(() -> show(movies));
-            } catch(Exception e){
-                LogStore.add(this,"Plex","Erreur bibliothèque : "+e.getMessage());
-                runOnUiThread(() -> status.setText("Erreur Plex : "+e.getMessage()));
-            }
+            try { List<PlexClient.Movie> movies = PlexClient.searchMovies(this,q); runOnUiThread(() -> show(movies)); }
+            catch(Exception e){LogStore.add(this,"Plex","Erreur bibliothèque : "+e.getMessage());runOnUiThread(() -> status.setText("Erreur Plex : "+e.getMessage()));}
         }).start();
     }
 
@@ -80,27 +66,15 @@ public class MoviePickerActivity extends Activity {
             StringBuilder label = new StringBuilder(m.title);
             if(m.year!=null && !m.year.isEmpty()) label.append("  ·  ").append(m.year);
             if(m.durationMs>0) label.append("  ·  ").append(duration(m.durationMs));
-            Button button = Ui.button(this,label.toString(),false);
-            button.setTypeface(null, android.graphics.Typeface.NORMAL);
+            Button button = Ui.button(this,label.toString(),false); button.setTypeface(null, android.graphics.Typeface.NORMAL);
             button.setOnClickListener(v -> {
-                AppState.setSelectedMovie(this,m.json());
-                LogStore.add(this,"Film","Sélectionné : "+m.title);
-                Intent in = new Intent(this,MainActivity.class);
-                in.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                startActivity(in);
-                finish();
+                LogStore.add(this,"Film","Choix : "+m.title);
+                Intent in = new Intent(this,MovieOptionsActivity.class); in.putExtra("movie",m.json().toString()); startActivity(in); finish();
             });
             list.addView(button,Ui.lp(-1,Ui.dp(this,Ui.smallControlHeight(this)),this,6));
         }
-        if (movies.isEmpty()) {
-            list.addView(Ui.muted(this,"Aucun résultat. Essaie un autre titre ou vérifie le serveur Plex sélectionné."), Ui.lp(-1,-2,this,8));
-        }
+        if (movies.isEmpty()) list.addView(Ui.muted(this,"Aucun résultat. Essaie un autre titre ou vérifie le serveur Plex sélectionné."), Ui.lp(-1,-2,this,8));
     }
 
-    private String duration(long ms){
-        long mins = Math.max(1, ms / 60000L);
-        long h = mins / 60;
-        long m = mins % 60;
-        return h > 0 ? h + " h " + (m < 10 ? "0" : "") + m : mins + " min";
-    }
+    private String duration(long ms){long mins=Math.max(1,ms/60000L),h=mins/60,m=mins%60;return h>0?h+" h "+(m<10?"0":"")+m:mins+" min";}
 }
