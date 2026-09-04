@@ -17,7 +17,6 @@ import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.Locale;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
@@ -25,32 +24,62 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+/**
+ * Proven Philips wake path. This is intentionally the SAME sequence used by the
+ * standalone "Wake-up · 2 min" test, because that path is validated on the OLED810.
+ * Scheduled sessions only change what is opened AFTER the TV has been woken.
+ */
 public class WakeReceiver extends BroadcastReceiver {
     private static final String TV_IP = "192.168.1.49";
     private static final String TV_MAC = "b8:d8:2d:4b:5d:d8";
 
-    @Override
-    public void onReceive(Context context, Intent intent) {
+    @Override public void onReceive(Context context, Intent intent) {
         final PendingResult pending = goAsync();
-        final SharedPreferences prefs = context.getSharedPreferences("wake_diag", Context.MODE_PRIVATE);
+        final SharedPreferences diag = context.getSharedPreferences("wake_diag", Context.MODE_PRIVATE);
         final PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         final boolean interactive = pm != null && pm.isInteractive();
+        final long receivedAt = System.currentTimeMillis();
 
-        prefs.edit()
-                .putLong("receiver_at", System.currentTimeMillis())
+        final String mode = intent.getStringExtra("mode"); // null/test | waiting | play
+        final String scheduleId = intent.getStringExtra("schedule_id");
+        final String movie = intent.getStringExtra("movie");
+        final int volume = intent.getIntExtra("volume", AppState.defaultVolume(context));
+        final long targetAt = intent.getLongExtra("target_at", receivedAt);
+        final long expectedAt = intent.getLongExtra("expected_at", 0L);
+        final boolean sleepWhenDone = intent.getBooleanExtra("sleep_when_done", true);
+
+        long delay = expectedAt > 0L ? Math.max(0L, receivedAt - expectedAt) : 0L;
+        if (expectedAt > 0L) {
+            AppState.prefs(context).edit().putLong("last_wake_delay_ms", delay).apply();
+        }
+
+        diag.edit()
+                .putLong("receiver_at", receivedAt)
                 .putBoolean("receiver_interactive", interactive)
                 .putString("diag_log", "Alarme reçue. Tentatives de réveil en cours…\n")
                 .commit();
 
+        String kind = "waiting".equals(mode) ? "Réveil séance" : "play".equals(mode) ? "Réveil secours film" : "Wake-up test";
+        LogStore.add(context, "Réveil", kind + " reçu" + (expectedAt > 0L ? " · retard " + (delay/1000L) + " s" : ""));
+
         final PowerManager.WakeLock wl;
         if (pm != null) {
-            wl = pm.newWakeLock(
-                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK |
-                    PowerManager.ACQUIRE_CAUSES_WAKEUP |
-                    PowerManager.ON_AFTER_RELEASE,
-                    "ShabbatTV:PhilipsWake"
-            );
-            wl.acquire(90_000L);
+            PowerManager.WakeLock tmp = null;
+            try {
+                tmp = pm.newWakeLock(
+                        PowerManager.SCREEN_BRIGHT_WAKE_LOCK |
+                                PowerManager.ACQUIRE_CAUSES_WAKEUP |
+                                PowerManager.ON_AFTER_RELEASE,
+                        "ShabbatTV:PhilipsWake"
+                );
+                long hold = "waiting".equals(mode)
+                        ? Math.max(90_000L, Math.min(15 * 60_000L, targetAt - receivedAt + 180_000L))
+                        : 90_000L;
+                tmp.acquire(hold);
+            } catch (Throwable t) {
+                LogStore.add(context, "Erreur", "WakeLock Philips : " + t.getClass().getSimpleName());
+            }
+            wl = tmp;
         } else {
             wl = null;
         }
@@ -58,12 +87,12 @@ public class WakeReceiver extends BroadcastReceiver {
         new Thread(() -> {
             StringBuilder log = new StringBuilder();
             try {
+                // Keep this sequence aligned with the standalone wake test.
                 log.append("1) WakeLock écran : demandé ✅\n");
                 log.append("2) PowerManager.wakeUp(reflection) : ").append(tryReflectionWake(pm)).append("\n");
                 log.append("3) input KEYCODE_WAKEUP : ").append(runShell("input keyevent 224")).append("\n");
                 log.append("4) cmd power wakeup : ").append(runShell("cmd power wakeup")).append("\n");
                 log.append("5) WoWLAN vers ").append(TV_MAC).append(" : ").append(sendWol()).append("\n");
-
                 log.append("6) Philips HTTP localhost 1925 /6 input PowerOn : ")
                         .append(post("http://127.0.0.1:1925/6/input/key", "{\"key\":\"PowerOn\"}")).append("\n");
                 log.append("7) Philips HTTPS localhost 1926 /6 input PowerOn : ")
@@ -78,17 +107,38 @@ public class WakeReceiver extends BroadcastReceiver {
                 log.append("Erreur générale : ").append(t.getClass().getSimpleName()).append(": ").append(safe(t.getMessage())).append("\n");
             }
 
-            prefs.edit().putString("diag_log", log.toString()).commit();
+            diag.edit().putString("diag_log", log.toString()).commit();
 
             try {
-                Intent show = new Intent(context, PlaybackActivity.class);
-                show.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                context.startActivity(show);
+                long now = System.currentTimeMillis();
+                if ("waiting".equals(mode)) {
+                    if (targetAt <= now) {
+                        LogStore.add(context, "Planning", "Réveil arrivé après l’heure cible · lancement immédiat");
+                        PlaybackLauncher.launch(context, movie, volume, scheduleId, sleepWhenDone);
+                    } else {
+                        Intent show = new Intent(context, WaitingActivity.class);
+                        show.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        show.putExtra("schedule_id", scheduleId);
+                        show.putExtra("movie", movie);
+                        show.putExtra("volume", volume);
+                        show.putExtra("target_at", targetAt);
+                        show.putExtra("sleep_when_done", sleepWhenDone);
+                        context.startActivity(show);
+                    }
+                } else if ("play".equals(mode)) {
+                    PlaybackLauncher.launch(context, movie, volume, scheduleId, sleepWhenDone);
+                } else {
+                    Intent show = new Intent(context, PlaybackActivity.class);
+                    show.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                    context.startActivity(show);
+                }
             } catch (Throwable t) {
-                prefs.edit().putString("diag_log", log + "Lancement activité résultat : " + t.getClass().getSimpleName() + "\n").commit();
+                diag.edit().putString("diag_log", log + "Lancement après réveil : " + t.getClass().getSimpleName() + "\n").commit();
+                LogStore.add(context, "Erreur", "Après réveil : " + t.getClass().getSimpleName());
             }
 
-            if (wl != null && wl.isHeld()) wl.release();
+            try { Thread.sleep(2500L); } catch (InterruptedException ignored) {}
+            try { if (wl != null && wl.isHeld()) wl.release(); } catch (Throwable ignored) {}
             pending.finish();
         }, "ShabbatWakeWorker").start();
     }
