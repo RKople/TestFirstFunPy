@@ -10,8 +10,8 @@ android {
         applicationId = "fr.shabbattv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "1.4-beta"
+        versionCode = 15
+        versionName = "1.5-beta"
     }
 }
 
