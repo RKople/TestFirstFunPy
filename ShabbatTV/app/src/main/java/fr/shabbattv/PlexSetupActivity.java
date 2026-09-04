@@ -14,63 +14,62 @@ import java.util.List;
 public class PlexSetupActivity extends Activity {
     private TextView code, status, serverStatus;
     private Button generate, verify, refreshServers;
-    private LinearLayout serverList;
+    private LinearLayout serverList, helpCard;
     private long pinId;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         LinearLayout root = Ui.page(this);
-
-        root.addView(Ui.eyebrow(this, "Connexion"));
-        root.addView(Ui.title(this, "Plex"), Ui.lp(-1,-2,this,5));
-        root.addView(Ui.subtitle(this, "Relie ton compte, puis choisis le serveur Plex à utiliser. Les serveurs partagés sont pris en charge."), Ui.lp(-1,-2,this,7));
+        Ui.header(root, this, "Configuration", "Plex", "Relie ton compte une fois, puis choisis le serveur qui contient les films à utiliser.");
 
         LinearLayout linkCard = Ui.card(this);
         linkCard.addView(Ui.eyebrow(this, "Compte Plex"));
         code = Ui.title(this, "— — — —");
-        code.setTextSize(48);
-        code.setLetterSpacing(.16f);
+        code.setTextSize(Ui.compact(this) ? 36 : 46);
+        code.setLetterSpacing(.14f);
         code.setGravity(Gravity.START);
-        linkCard.addView(code, Ui.lp(-1,-2,this,10));
+        code.setSingleLine(true);
+        linkCard.addView(code, Ui.lp(-1,-2,this,Ui.compact(this)?6:9));
 
         status = Ui.muted(this, "Génère un code, puis ouvre plex.tv/link sur ton téléphone.");
-        status.setLineSpacing(0,1.12f);
-        linkCard.addView(status, Ui.lp(-1,-2,this,8));
+        linkCard.addView(status, Ui.lp(-1,-2,this,5));
 
-        generate = Ui.button(this, "Générer un nouveau code", true);
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        generate = Ui.button(this, "Générer un code", true);
         generate.setOnClickListener(v -> createPin());
-        linkCard.addView(generate, Ui.lp(-1,Ui.dp(this,58),this,18));
-
         verify = Ui.button(this, "J’ai validé le code", false);
         verify.setOnClickListener(v -> checkPin());
-        linkCard.addView(verify, Ui.lp(-1,Ui.dp(this,58),this,10));
-        root.addView(linkCard, Ui.lp(-1,-2,this,28));
+        actions.addView(generate, new LinearLayout.LayoutParams(0, Ui.dp(this, Ui.controlHeight(this)), 1));
+        LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(0, Ui.dp(this, Ui.controlHeight(this)), 1);
+        vp.setMargins(Ui.dp(this, Ui.compact(this)?6:10),0,0,0);
+        actions.addView(verify, vp);
+        linkCard.addView(actions, Ui.lp(-1, Ui.dp(this, Ui.controlHeight(this)), this, Ui.compact(this)?10:16));
+        root.addView(linkCard, Ui.lp(-1,-2,this,Ui.compact(this)?14:22));
 
         LinearLayout serversCard = Ui.card(this);
         serversCard.addView(Ui.eyebrow(this, "Serveur utilisé"));
         serverStatus = Ui.muted(this, "Connecte d’abord ton compte Plex.");
-        serversCard.addView(serverStatus, Ui.lp(-1,-2,this,9));
+        serversCard.addView(serverStatus, Ui.lp(-1,-2,this,6));
         serverList = new LinearLayout(this);
         serverList.setOrientation(LinearLayout.VERTICAL);
-        serversCard.addView(serverList, Ui.lp(-1,-2,this,8));
+        serversCard.addView(serverList, Ui.lp(-1,-2,this,5));
         refreshServers = Ui.button(this, "Rafraîchir les serveurs", false);
         refreshServers.setOnClickListener(v -> loadServers());
-        serversCard.addView(refreshServers, Ui.lp(-1,Ui.dp(this,54),this,12));
-        root.addView(serversCard, Ui.lp(-1,-2,this,14));
+        serversCard.addView(refreshServers, Ui.lp(-1,Ui.dp(this,Ui.smallControlHeight(this)),this,8));
+        root.addView(serversCard, Ui.lp(-1,-2,this,Ui.compact(this)?10:14));
 
-        LinearLayout help = Ui.card(this);
+        helpCard = Ui.card(this);
         TextView h = Ui.body(this, "Connexion rapide");
         h.setTypeface(null, Typeface.BOLD);
-        help.addView(h);
-        help.addView(Ui.muted(this,
-                "1  Génère un code\n" +
-                "2  Ouvre plex.tv/link sur ton téléphone\n" +
-                "3  Saisis les 4 caractères\n" +
-                "4  Valide sur la TV\n" +
-                "5  Choisis ensuite le bon serveur, même s’il appartient à un ami"), Ui.lp(-1,-2,this,8));
-        root.addView(help, Ui.lp(-1,-2,this,14));
+        helpCard.addView(h);
+        helpCard.addView(Ui.muted(this,
+                "1  Génère un code  ·  2  Ouvre plex.tv/link  ·  3  Saisis les 4 caractères\n" +
+                "4  Valide sur la TV  ·  5  Choisis ensuite le bon serveur, y compris un serveur partagé"),
+                Ui.lp(-1,-2,this,6));
+        root.addView(helpCard, Ui.lp(-1,-2,this,Ui.compact(this)?10:14));
 
-        setContentView(root);
+        Ui.setScrollable(this, root);
         refreshAccountUi();
         if (hasAccountToken()) loadServers();
     }
@@ -81,18 +80,28 @@ public class PlexSetupActivity extends Activity {
 
     private void refreshAccountUi() {
         if (hasAccountToken()) {
-            code.setText("✓");
+            code.setText("✓  Compte lié");
             code.setLetterSpacing(0);
+            code.setTextSize(Ui.compact(this) ? 23 : 28);
             code.setTextColor(Ui.GOOD);
-            status.setText("Compte Plex lié. Choisis ci-dessous le serveur qui contient les films à utiliser.");
-            verify.setText("Compte lié");
+            status.setText("Connexion Plex active. Sélectionne ci-dessous le serveur à utiliser.");
+            generate.setText("Relier un autre compte");
+            verify.setVisibility(View.GONE);
+            helpCard.setVisibility(View.GONE);
+        } else {
+            code.setTextColor(Ui.TEXT);
+            verify.setVisibility(View.VISIBLE);
+            helpCard.setVisibility(View.VISIBLE);
         }
     }
 
     private void createPin() {
         code.setText("…");
+        code.setTextSize(Ui.compact(this) ? 36 : 46);
         code.setLetterSpacing(0);
         code.setTextColor(Ui.TEXT);
+        verify.setVisibility(View.VISIBLE);
+        helpCard.setVisibility(View.VISIBLE);
         status.setText("Création du code Plex…");
         generate.setEnabled(false);
         new Thread(() -> {
@@ -102,12 +111,12 @@ public class PlexSetupActivity extends Activity {
                 AppState.prefs(this).edit().putLong("plex_pin_id", pinId).apply();
                 runOnUiThread(() -> {
                     String display = p.code == null ? "" : p.code.trim().toUpperCase();
-                    code.setLetterSpacing(.16f);
+                    code.setLetterSpacing(.14f);
                     code.setText(display);
                     if (display.length() != 4) {
-                        status.setText("Plex a renvoyé un code inattendu (" + display.length() + " caractères). Génère un nouveau code.");
+                        status.setText("Code Plex inattendu. Génère un nouveau code.");
                     } else {
-                        status.setText("Code prêt. Ouvre plex.tv/link sur ton téléphone et saisis ces 4 caractères.");
+                        status.setText("Ouvre plex.tv/link sur ton téléphone et saisis ces 4 caractères.");
                     }
                     generate.setEnabled(true);
                     verify.requestFocus();
@@ -135,7 +144,7 @@ public class PlexSetupActivity extends Activity {
                 PlexClient.Pin p = PlexClient.checkPin(this, id);
                 if (p.token == null || p.token.isEmpty()) {
                     runOnUiThread(() -> {
-                        status.setText("Pas encore validé côté Plex. Vérifie le code sur plex.tv/link puis réessaie.");
+                        status.setText("Pas encore validé côté Plex. Vérifie le code puis réessaie.");
                         verify.setEnabled(true);
                     });
                     return;
@@ -161,11 +170,9 @@ public class PlexSetupActivity extends Activity {
             serverStatus.setText("Connecte d’abord ton compte Plex.");
             return;
         }
-
         serverStatus.setText("Recherche des serveurs accessibles…");
         serverList.removeAllViews();
         refreshServers.setEnabled(false);
-
         new Thread(() -> {
             try {
                 List<PlexClient.Server> servers = PlexClient.listServers(this, token);
@@ -189,20 +196,20 @@ public class PlexSetupActivity extends Activity {
 
         String selectedMachine = AppState.prefs(this).getString("plex_server_machine_id", "");
         String selectedName = AppState.prefs(this).getString("plex_server_name", "");
-        serverStatus.setText(servers.size() + (servers.size() > 1 ? " serveurs disponibles. Choisis celui qui contient tes films." : " serveur disponible."));
+        serverStatus.setText(servers.size() + (servers.size() > 1 ? " serveurs disponibles" : " serveur disponible"));
 
         for (PlexClient.Server s : servers) {
             boolean selected = (!selectedMachine.isEmpty() && selectedMachine.equals(s.machineId))
                     || (selectedMachine.isEmpty() && !selectedName.isEmpty() && selectedName.equals(s.name));
             String type = s.owned ? "Mon serveur" : "Partagé avec moi";
-            String label = (selected ? "✓  " : "") + s.name + "   ·   " + type;
+            String label = (selected ? "✓  " : "") + s.name + "  ·  " + type;
             Button b = Ui.button(this, label, selected);
-            b.setOnClickListener(v -> chooseServer(accountToken, s, b));
-            serverList.addView(b, Ui.lp(-1, Ui.dp(this, 56), this, 8));
+            b.setOnClickListener(v -> chooseServer(accountToken, s));
+            serverList.addView(b, Ui.lp(-1, Ui.dp(this, Ui.smallControlHeight(this)), this, 6));
         }
     }
 
-    private void chooseServer(String accountToken, PlexClient.Server server, Button source) {
+    private void chooseServer(String accountToken, PlexClient.Server server) {
         serverStatus.setText("Test de connexion à “" + server.name + "”…");
         setServerButtonsEnabled(false);
         new Thread(() -> {
@@ -210,12 +217,12 @@ public class PlexSetupActivity extends Activity {
                 PlexClient.selectServer(this, accountToken, server);
                 AppState.setSelectedMovie(this, null);
                 runOnUiThread(() -> {
-                    serverStatus.setText("✓ “" + server.name + "” est sélectionné et joignable. Tu peux aller dans Films.");
+                    serverStatus.setText("✓ “" + server.name + "” est sélectionné. Tu peux ouvrir Films.");
                     loadServers();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    serverStatus.setText("“" + server.name + "” est actuellement inaccessible : " + e.getMessage());
+                    serverStatus.setText("“" + server.name + "” est inaccessible : " + e.getMessage());
                     setServerButtonsEnabled(true);
                 });
             }
@@ -223,10 +230,7 @@ public class PlexSetupActivity extends Activity {
     }
 
     private void setServerButtonsEnabled(boolean enabled) {
-        for (int i = 0; i < serverList.getChildCount(); i++) {
-            View v = serverList.getChildAt(i);
-            v.setEnabled(enabled);
-        }
+        for (int i = 0; i < serverList.getChildCount(); i++) serverList.getChildAt(i).setEnabled(enabled);
         refreshServers.setEnabled(enabled);
     }
 }
