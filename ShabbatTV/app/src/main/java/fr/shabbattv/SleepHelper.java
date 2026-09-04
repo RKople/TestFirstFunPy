@@ -37,6 +37,7 @@ public final class SleepHelper {
             a.setContentView(v);
         } catch (Throwable ignored) {}
         AppState.prefs(a).edit().putString("last_sleep_diag", log.toString()).putLong("last_sleep_at", System.currentTimeMillis()).apply();
+        LogStore.add(a,"Veille","Demande de mise en veille : "+log);
         return log.toString();
     }
 }
