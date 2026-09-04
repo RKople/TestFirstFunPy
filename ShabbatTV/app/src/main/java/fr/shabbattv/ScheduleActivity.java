@@ -89,7 +89,7 @@ public class ScheduleActivity extends Activity {
         JSONObject movie=AppState.selectedMovie(this); if(movie==null){feedback.setText("Sélectionne un film d’abord.");return;}
         long now=System.currentTimeMillis();
         if(test && when < now + 7*60_000L){feedback.setText("Le test complet a besoin d’environ 8 minutes pour reproduire le vrai scénario.");return;}
-        if(!test && when <= now+2*60_000L){feedback.setText("Choisis une heure au moins 2 minutes dans le futur. Pour une TV éteinte, plus tu programmes en avance, plus le réveil est sûr.");return;}
+        if(!test && when <= now+8*60_000L){feedback.setText("Pour garantir le réveil d’une TV éteinte, programme la séance au moins 8 minutes à l’avance. Le délai Philips observé est d’environ 3 minutes après l’alarme.");return;}
 
         AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);
         if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S&&!am.canScheduleExactAlarms()){feedback.setText("Autorise d’abord les alarmes exactes depuis l’accueil.");return;}
@@ -105,7 +105,7 @@ public class ScheduleActivity extends Activity {
         long retryAt;
         if(test){
             wakeAt=now+2*60_000L;       // same timing as the validated standalone Wake-up test
-            retryAt=now+5*60_000L;      // safety retry while there is still time before T+8
+            retryAt=now+5*60_000L;      // second identical attempt while there is still time before T+8
         } else {
             long desired=when-AppState.preWakeMinutes(this)*60_000L; // normally T-10 min
             wakeAt=Math.max(desired,now+2*60_000L);
