@@ -45,5 +45,19 @@ public class LogsActivity extends Activity {
 
     @Override protected void onResume(){ super.onResume(); if(logs!=null) refresh(); }
 
-    private void refresh(){ logs.setText(LogStore.text(this)); }
+    private void refresh(){
+        StringBuilder out = new StringBuilder(LogStore.text(this));
+        String wake = getSharedPreferences("wake_diag",MODE_PRIVATE).getString("diag_log","");
+        String play = AppState.prefs(this).getString("last_play_error","");
+        String sleep = AppState.prefs(this).getString("last_sleep_diag","");
+        String schedule = AppState.prefs(this).getString("last_schedule_error","");
+        if(!wake.isEmpty() || !play.isEmpty() || !sleep.isEmpty() || !schedule.isEmpty()) {
+            out.append("\n\n\n—— DIAGNOSTICS TECHNIQUES ——");
+            if(!wake.isEmpty()) out.append("\n\nRéveil\n").append(wake);
+            if(!play.isEmpty()) out.append("\n\nDernière erreur lecture\n").append(play);
+            if(!schedule.isEmpty()) out.append("\n\nDernière erreur planning\n").append(schedule);
+            if(!sleep.isEmpty()) out.append("\n\nVeille\n").append(sleep);
+        }
+        logs.setText(out.toString());
+    }
 }
