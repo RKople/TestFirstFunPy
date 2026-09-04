@@ -25,7 +25,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ShabbatTV-v0.1
+          name: ShabbatTV-v1
           path: ShabbatTV/app/build/outputs/apk/debug/app-debug.apk
       - name: Publish exact APK in repo
         run: |
@@ -37,5 +37,6 @@ jobs:
             echo "APK unchanged"
           else
             git commit -m "Publish exact APK [skip ci]"
+            git pull --rebase origin shabbat-tv-build
             git push origin HEAD:shabbat-tv-build
           fi
