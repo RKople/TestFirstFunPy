@@ -99,9 +99,11 @@ public final class AppState {
         return removed;
     }
 
+    /** Keep the same request-code algorithm used by previous versions so old alarms can be cancelled too. */
     public static int requestCodeForId(String id) {
         if (id == null) return 1;
-        return id.hashCode() & 0x7fffffff;
+        int hash = id.hashCode();
+        return hash == Integer.MIN_VALUE ? 0 : Math.abs(hash);
     }
 
     public static int preWakeMinutes(Context c) {
