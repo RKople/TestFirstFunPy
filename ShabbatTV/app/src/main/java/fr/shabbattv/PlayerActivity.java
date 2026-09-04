@@ -2,6 +2,7 @@ package fr.shabbattv;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Color;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.PowerManager;
@@ -22,6 +23,7 @@ public class PlayerActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.prepareWindow(this);
         if (android.os.Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
@@ -41,7 +43,10 @@ public class PlayerActivity extends Activity {
                 am.setStreamVolume(AudioManager.STREAM_MUSIC, Math.max(0, Math.min(max, Math.round(max * vol / 100f))), 0);
             }
             PlayerView view = new PlayerView(this);
+            view.setBackgroundColor(Color.BLACK);
             view.setUseController(true);
+            view.setControllerAutoShow(false);
+            view.setControllerShowTimeoutMs(3500);
             setContentView(view, new ViewGroup.LayoutParams(-1,-1));
             player = new ExoPlayer.Builder(this).build();
             view.setPlayer(player);
@@ -55,7 +60,8 @@ public class PlayerActivity extends Activity {
                     AppState.prefs(PlayerActivity.this).edit().putString("last_play_error", error.getMessage()).apply();
                 }
             });
-            player.prepare(); player.play();
+            player.prepare();
+            player.play();
             AppState.prefs(this).edit().putLong("last_play_started", System.currentTimeMillis()).putString("last_play_title", movie.optString("title")).apply();
         } catch (Exception e) {
             AppState.prefs(this).edit().putString("last_play_error", e.toString()).apply();
