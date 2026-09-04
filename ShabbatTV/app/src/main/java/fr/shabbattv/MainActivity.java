@@ -5,13 +5,13 @@ import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -21,11 +21,20 @@ import java.util.Date;
 
 public class MainActivity extends Activity {
     private TextView status;
+    private SharedPreferences prefs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        prefs = getSharedPreferences("diag", MODE_PRIVATE);
         buildUi();
+        showPersistentDiagnostics();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (status != null) showPersistentDiagnostics();
     }
 
     private void buildUi() {
@@ -36,14 +45,14 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.rgb(8, 12, 20));
 
         TextView title = new TextView(this);
-        title.setText("SHABBAT TV");
+        title.setText("SHABBAT TV v0.3");
         title.setTextColor(Color.WHITE);
         title.setTextSize(34f);
         title.setGravity(Gravity.CENTER);
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Prototype Philips OLED810 — test de réveil automatique");
+        subtitle.setText("Diagnostic persistant de veille Philips OLED810");
         subtitle.setTextColor(Color.LTGRAY);
         subtitle.setTextSize(18f);
         subtitle.setGravity(Gravity.CENTER);
@@ -68,7 +77,6 @@ public class MainActivity extends Activity {
         root.addView(permission, pLp);
 
         status = new TextView(this);
-        status.setText("1. Autorise les alarmes exactes si Android le demande.\n2. Programme le test.\n3. Éteins la TV avec la télécommande.\n4. Dans 2 minutes, l'app tentera de réveiller l'écran.");
         status.setTextColor(Color.WHITE);
         status.setTextSize(18f);
         status.setGravity(Gravity.CENTER);
@@ -82,17 +90,25 @@ public class MainActivity extends Activity {
     private void scheduleTest(int minutes) {
         AlarmManager alarm = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarm.canScheduleExactAlarms()) {
-            status.setText("Autorisation requise : ouvre 'Alarmes et rappels', autorise Shabbat TV, puis reviens ici.");
+            status.setText("Autorisation requise : autorise Shabbat TV dans 'Alarmes et rappels', puis reviens.");
             requestExactAlarmPermission();
             return;
         }
 
         long when = System.currentTimeMillis() + minutes * 60_000L;
-        Intent intent = new Intent(this, PlaybackActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pi = PendingIntent.getActivity(
+        prefs.edit()
+                .putLong("scheduled_at", when)
+                .remove("receiver_at")
+                .remove("receiver_interactive")
+                .remove("playback_at")
+                .remove("start_error")
+                .apply();
+
+        Intent intent = new Intent(this, AlarmReceiver.class);
+        intent.setAction("fr.shabbattv.TEST_ALARM");
+        PendingIntent pi = PendingIntent.getBroadcast(
                 this,
-                1001,
+                3003,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
@@ -103,8 +119,50 @@ public class MainActivity extends Activity {
             alarm.setExact(AlarmManager.RTC_WAKEUP, when, pi);
         }
 
-        String time = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(when));
-        status.setText("TEST ARMÉ ✅\nDéclenchement prévu à " + time + ".\nÉteins maintenant la TV avec la télécommande et n'y touche plus.");
+        String time = DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(when));
+        status.setText("TEST ARMÉ ✅\nAlarme prévue à " + time + ".\nÉteins maintenant la TV. Attends 5 minutes puis rallume-la manuellement et rouvre Shabbat TV.");
+    }
+
+    private void showPersistentDiagnostics() {
+        long scheduled = prefs.getLong("scheduled_at", 0L);
+        long receiver = prefs.getLong("receiver_at", 0L);
+        long playback = prefs.getLong("playback_at", 0L);
+        boolean interactive = prefs.getBoolean("receiver_interactive", false);
+        String error = prefs.getString("start_error", "");
+
+        if (scheduled == 0L) {
+            status.setText("Aucun test enregistré.\nProgramme un test, éteins la TV, attends 5 minutes, puis rallume-la.");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Dernier test prévu : ")
+                .append(DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(scheduled)))
+                .append("\n\n");
+
+        if (receiver > 0L) {
+            sb.append("ALARME REÇUE ✅ à ")
+                    .append(DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(receiver)))
+                    .append("\nÉcran interactif à cet instant : ")
+                    .append(interactive ? "OUI" : "NON")
+                    .append("\n");
+        } else {
+            sb.append("ALARME NON REÇUE ❌ (aucune trace persistante)\n");
+        }
+
+        if (playback > 0L) {
+            sb.append("Écran de test lancé ✅ à ")
+                    .append(DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(playback)))
+                    .append("\n");
+        } else {
+            sb.append("Écran de test non confirmé\n");
+        }
+
+        if (error != null && !error.isEmpty()) {
+            sb.append("Erreur lancement : ").append(error).append("\n");
+        }
+
+        status.setText(sb.toString());
     }
 
     private void requestExactAlarmPermission() {
@@ -116,8 +174,6 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 startActivity(new Intent(Settings.ACTION_SETTINGS));
             }
-        } else {
-            status.setText("Cette version d'Android ne nécessite pas cette autorisation.");
         }
     }
 }

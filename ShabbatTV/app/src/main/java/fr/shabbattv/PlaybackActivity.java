@@ -15,10 +15,9 @@ public class PlaybackActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getSharedPreferences("diag", MODE_PRIVATE).edit().putLong("playback_at", System.currentTimeMillis()).apply();
 
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        boolean interactiveBefore = pm != null && pm.isInteractive();
-
         if (pm != null) {
             wakeLock = pm.newWakeLock(
                     PowerManager.SCREEN_BRIGHT_WAKE_LOCK |
@@ -47,15 +46,14 @@ public class PlaybackActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
 
         TextView big = new TextView(this);
-        big.setText("TEST SHABBAT TV v0.2");
+        big.setText("TEST SHABBAT TV v0.3");
         big.setTextColor(Color.WHITE);
         big.setTextSize(42f);
         big.setGravity(Gravity.CENTER);
         root.addView(big, new LinearLayout.LayoutParams(-1, -2));
 
         TextView small = new TextView(this);
-        small.setText("L'alarme s'est déclenchée.\nÉcran interactif avant tentative : " + (interactiveBefore ? "OUI" : "NON") +
-                "\nWakeLock écran forcé pendant 60 secondes.");
+        small.setText("L'alarme a atteint l'activité de test.\nSi tu vois ceci sans avoir rallumé manuellement la TV : réveil complet réussi.");
         small.setTextColor(Color.LTGRAY);
         small.setTextSize(22f);
         small.setGravity(Gravity.CENTER);
@@ -68,9 +66,7 @@ public class PlaybackActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (wakeLock != null && wakeLock.isHeld()) {
-            wakeLock.release();
-        }
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         super.onDestroy();
     }
 }
