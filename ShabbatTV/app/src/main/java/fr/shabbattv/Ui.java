@@ -2,6 +2,7 @@ package fr.shabbattv;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -22,7 +23,7 @@ import java.util.Locale;
 public final class Ui {
     public static final int BG = Color.rgb(9, 11, 14);
     public static final int SURFACE = Color.rgb(20, 23, 28);
-    public static final int SURFACE_2 = Color.rgb(28, 32, 38);
+    public static final int SURFACE_2 = Color.rgb(31, 35, 42);
     public static final int TEXT = Color.rgb(247, 246, 242);
     public static final int MUTED = Color.rgb(157, 164, 174);
     public static final int ACCENT = Color.rgb(229, 160, 13);
@@ -58,11 +59,6 @@ public final class Ui {
         return compact(c) ? 46 : 54;
     }
 
-    /**
-     * Android TV can expose a logical viewport much smaller than the 4K panel.
-     * Keep every interactive screen inside a 5% TV-safe area instead of using
-     * panel pixels or fixed widths.
-     */
     public static LinearLayout page(Activity a) {
         prepareWindow(a);
         int w = widthDp(a);
@@ -86,6 +82,8 @@ public final class Ui {
         scroll.setSmoothScrollingEnabled(true);
         scroll.setBackgroundColor(BG);
         scroll.setClipToPadding(false);
+        scroll.setFocusable(true);
+        scroll.setFocusableInTouchMode(true);
         scroll.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         a.setContentView(scroll);
     }
@@ -164,7 +162,7 @@ public final class Ui {
         b.setAllCaps(false);
         b.setTextSize(compact(c) ? 15 : 17);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        b.setTextColor(primary ? Color.rgb(20, 16, 7) : TEXT);
+        b.setTextColor(buttonTextColors(primary));
         b.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         b.setPadding(dp(c, compact(c) ? 16 : 22), 0, dp(c, compact(c) ? 16 : 22), 0);
         b.setFocusable(true);
@@ -173,6 +171,22 @@ public final class Ui {
         b.setStateListAnimator(null);
         b.setBackground(selector(c, primary));
         return b;
+    }
+
+    private static ColorStateList buttonTextColors(boolean primary) {
+        int[][] states = new int[][]{
+                new int[]{-android.R.attr.state_enabled},
+                new int[]{android.R.attr.state_focused},
+                new int[]{android.R.attr.state_pressed},
+                new int[]{}
+        };
+        int[] colors;
+        if (primary) {
+            colors = new int[]{MUTED, Color.rgb(20,16,7), Color.rgb(20,16,7), ACCENT};
+        } else {
+            colors = new int[]{MUTED, TEXT, TEXT, TEXT};
+        }
+        return new ColorStateList(states, colors);
     }
 
     public static EditText input(Context c, String hint) {
@@ -226,11 +240,18 @@ public final class Ui {
 
     private static StateListDrawable selector(Context c, boolean primary) {
         StateListDrawable s = new StateListDrawable();
-        int normalFill = primary ? ACCENT : SURFACE;
-        int focusFill = primary ? Color.rgb(244, 181, 49) : SURFACE_2;
-        s.addState(new int[]{android.R.attr.state_focused}, round(c, focusFill, ACCENT, 2, 14));
-        s.addState(new int[]{android.R.attr.state_pressed}, round(c, focusFill, ACCENT, 2, 14));
-        s.addState(new int[]{}, round(c, normalFill, primary ? ACCENT : STROKE, 1, 14));
+        if (primary) {
+            // Primary actions are no longer solid yellow at rest: yellow now means focus.
+            s.addState(new int[]{-android.R.attr.state_enabled}, round(c, SURFACE, STROKE, 1, 14));
+            s.addState(new int[]{android.R.attr.state_focused}, round(c, ACCENT, ACCENT, 2, 14));
+            s.addState(new int[]{android.R.attr.state_pressed}, round(c, ACCENT, ACCENT, 2, 14));
+            s.addState(new int[]{}, round(c, SURFACE, ACCENT, 1, 14));
+        } else {
+            s.addState(new int[]{-android.R.attr.state_enabled}, round(c, SURFACE, STROKE, 1, 14));
+            s.addState(new int[]{android.R.attr.state_focused}, round(c, SURFACE_2, ACCENT, 3, 14));
+            s.addState(new int[]{android.R.attr.state_pressed}, round(c, SURFACE_2, ACCENT, 3, 14));
+            s.addState(new int[]{}, round(c, SURFACE, STROKE, 1, 14));
+        }
         return s;
     }
 
