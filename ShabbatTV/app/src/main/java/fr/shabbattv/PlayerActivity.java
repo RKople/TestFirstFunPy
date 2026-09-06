@@ -43,7 +43,8 @@ public class PlayerActivity extends Activity {
             JSONObject movie = raw == null ? AppState.selectedMovie(this) : new JSONObject(raw);
             if (movie == null) throw new Exception("Aucun film sélectionné");
             title = movie.optString("title","Film");
-            int vol = getIntent().getIntExtra("volume", AppState.defaultVolume(this));
+            // v1.8: the requested rule is global and absolute. Ignore any old schedule/intent value.
+            int vol = AppState.FILM_VOLUME_PERCENT;
             AudioManager am = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
             if (am != null) { int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC); am.setStreamVolume(AudioManager.STREAM_MUSIC, Math.max(0, Math.min(max, Math.round(max * vol / 100f))), 0); }
 
