@@ -10,6 +10,7 @@ import java.util.UUID;
 
 public final class AppState {
     public static final String PREFS = "shabbat_tv_v1";
+    public static final int FILM_VOLUME_PERCENT = 37;
 
     private AppState() {}
 
@@ -110,7 +111,8 @@ public final class AppState {
         return prefs(c).getInt("prewake_minutes", 10);
     }
 
+    /** Film volume is intentionally fixed everywhere, including old stored schedules. */
     public static int defaultVolume(Context c) {
-        return prefs(c).getInt("default_volume", 20);
+        return FILM_VOLUME_PERCENT;
     }
 }
