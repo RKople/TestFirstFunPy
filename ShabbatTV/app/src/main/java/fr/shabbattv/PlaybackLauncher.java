@@ -23,7 +23,7 @@ public final class PlaybackLauncher {
         Intent play = new Intent(context,PlayerActivity.class);
         play.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         play.putExtra("movie",movie);
-        play.putExtra("volume",volume);
+        play.putExtra("volume",AppState.FILM_VOLUME_PERCENT);
         play.putExtra("schedule_id",key);
         play.putExtra("sleep_when_done",sleepWhenDone);
         context.startActivity(play);
