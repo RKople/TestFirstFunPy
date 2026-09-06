@@ -25,7 +25,7 @@ public class ScheduleDetailActivity extends Activity {
         scheduleId = getIntent().getStringExtra("schedule_id");
         schedule = AppState.scheduleById(this, scheduleId);
         LinearLayout root = Ui.page(this);
-        Ui.header(root, this, "Planning", "Détail de la séance", "Toutes les étapes prévues pour cette séance, du réveil de la Philips jusqu’à la fin du film.");
+        Ui.header(root, this, "Planning", "Détail de la séance", "Toutes les étapes prévues pour cette séance, du réveil critique de la Philips jusqu’à la fin du film.");
 
         LinearLayout card = Ui.card(this); card.addView(Ui.eyebrow(this,"Séance programmée"));
         TextView title = Ui.title(this, schedule == null ? "Séance introuvable" : schedule.optString("title","Film")); title.setTextSize(Ui.compact(this) ? 23 : 28);
@@ -44,16 +44,19 @@ public class ScheduleDetailActivity extends Activity {
         long retryAt=schedule.optLong("retryAt",0L);
         long visibleEstimate=schedule.optLong("visibleEstimateAt",wakeAt+3*60_000L);
         long duration=schedule.optLong("durationMs",0L),endAt=schedule.optLong("endAt",duration>0?when+duration:0L);
-        int volume=schedule.optInt("volume",AppState.defaultVolume(this));
+        int volume=AppState.FILM_VOLUME_PERCENT;
         String server=schedule.optString("server",AppState.prefs(this).getString("plex_server_name","Plex"));
         String audio=schedule.optString("audioLabel","Automatique"),subs=schedule.optString("subtitleLabel","Aucun");
+        boolean alarmClock="alarm-clock".equals(schedule.optString("alarmMode",""));
         DateFormat d=DateFormat.getDateTimeInstance(DateFormat.FULL,DateFormat.SHORT),t=DateFormat.getTimeInstance(DateFormat.SHORT);
         StringBuilder s=new StringBuilder();
         s.append("Date  ·  ").append(d.format(new Date(when))).append("\n\n");
+        s.append("Mode longue veille  ·  ").append(alarmClock?"AlarmClock critique":"ancien mode").append("\n");
+        if(alarmClock)s.append("  Android doit sortir du mode basse consommation avant le réveil.\n\n");
         s.append("Commande de réveil  ·  ").append(t.format(new Date(wakeAt))).append("\n");
-        s.append("  Même mécanisme que le test Wake-up validé.\n");
+        s.append("  Même WakeReceiver que le test 8 minutes validé.\n");
         s.append("Allumage estimé  ·  vers ").append(t.format(new Date(visibleEstimate))).append("\n");
-        s.append("  L’heure réelle peut varier de quelques minutes selon la veille Philips.\n");
+        s.append("  La dalle Philips met environ 3 minutes à devenir visible après la commande.\n");
         if(retryAt>0L)s.append("Réveil de secours  ·  ").append(t.format(new Date(retryAt))).append("\n");
         s.append("\nÉcran d’attente  ·  dès que la TV s’allume\n");
         s.append("  Affiche le film et un compte à rebours jusqu’au démarrage.\n\n");
@@ -62,7 +65,7 @@ public class ScheduleDetailActivity extends Activity {
         if(endAt>0){s.append("Extinction estimée  ·  vers ").append(t.format(new Date(endAt))).append("\n");s.append("  La commande de veille réelle part à la fin effective du film.\n");}
         else s.append("Extinction  ·  à la fin réelle du film\n");
         s.append("\nAudio  ·  ").append(audio).append("\nSous-titres  ·  ").append(subs);
-        s.append("\nVolume  ·  ").append(volume).append(" %\nServeur Plex  ·  ").append(server);
+        s.append("\nVolume  ·  ").append(volume).append(" % (fixe)\nServeur Plex  ·  ").append(server);
         if(duration>0)s.append("\nDurée Plex  ·  ").append(formatDuration(duration));
         info.setText(s.toString());
     }
@@ -74,7 +77,7 @@ public class ScheduleDetailActivity extends Activity {
         try{
             AlarmManager am=(AlarmManager)getSystemService(Context.ALARM_SERVICE);
 
-            // v1.7: proven WakeReceiver primary/retry/target + direct playback target.
+            // v1.7/v1.8: WakeReceiver primary/retry/target + direct playback target.
             cancelBroadcast(am, WakeReceiver.class, scheduleId+":wake");
             cancelBroadcast(am, WakeReceiver.class, scheduleId+":retry");
             cancelBroadcast(am, WakeReceiver.class, scheduleId+":target-wake");
