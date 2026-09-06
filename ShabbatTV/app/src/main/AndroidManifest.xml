@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -18,6 +19,11 @@
         <receiver android:name=".RobustWakeReceiver" android:enabled="true" android:exported="false" />
         <receiver android:name=".PreWakeReceiver" android:enabled="true" android:exported="false" />
         <receiver android:name=".ScheduleReceiver" android:enabled="true" android:exported="false" />
+        <receiver android:name=".BootReceiver" android:enabled="true" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <activity android:name=".WaitingActivity" android:exported="false" android:launchMode="singleTask" android:screenOrientation="landscape" />
         <activity android:name=".ArmedActivity" android:exported="false" android:screenOrientation="landscape" />
