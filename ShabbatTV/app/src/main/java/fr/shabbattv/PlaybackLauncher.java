@@ -20,12 +20,15 @@ public final class PlaybackLauncher {
         p.edit().putString("last_launch_schedule_id", key).putLong("last_launch_at", now).apply();
         if (!key.isEmpty() && !key.startsWith("test-")) AppState.removeSchedule(context,key);
 
+        boolean armed = AppState.isShabbatArmed(context);
         Intent play = new Intent(context,PlayerActivity.class);
         play.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         play.putExtra("movie",movie);
         play.putExtra("volume",AppState.FILM_VOLUME_PERCENT);
         play.putExtra("schedule_id",key);
-        play.putExtra("sleep_when_done",sleepWhenDone);
+        // While armed, never put the TV into standby between films. PlayerActivity returns to the black hold screen.
+        play.putExtra("sleep_when_done", armed ? false : sleepWhenDone);
+        play.putExtra("shabbat_armed_playback", armed);
         context.startActivity(play);
         return true;
     }
