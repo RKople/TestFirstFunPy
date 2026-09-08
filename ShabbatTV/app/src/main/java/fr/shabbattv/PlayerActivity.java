@@ -2,6 +2,7 @@ package fr.shabbattv;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.media.AudioManager;
 import android.net.Uri;
@@ -29,6 +30,7 @@ public class PlayerActivity extends Activity {
     private PowerManager.WakeLock wakeLock;
     private String title = "Film";
     private boolean playLogged = false;
+    private boolean endHandled = false;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -43,7 +45,6 @@ public class PlayerActivity extends Activity {
             JSONObject movie = raw == null ? AppState.selectedMovie(this) : new JSONObject(raw);
             if (movie == null) throw new Exception("Aucun film sélectionné");
             title = movie.optString("title","Film");
-            // v1.8: the requested rule is global and absolute. Ignore any old schedule/intent value.
             int vol = AppState.FILM_VOLUME_PERCENT;
             AudioManager am = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
             if (am != null) { int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC); am.setStreamVolume(AudioManager.STREAM_MUSIC, Math.max(0, Math.min(max, Math.round(max * vol / 100f))), 0); }
@@ -81,21 +82,69 @@ public class PlayerActivity extends Activity {
             player.addListener(new Player.Listener() {
                 @Override public void onPlaybackStateChanged(int state) {
                     if (state == Player.STATE_READY && !playLogged) { playLogged = true; LogStore.add(PlayerActivity.this,"Lecture","Lecture démarrée : "+title); }
-                    if (state == Player.STATE_ENDED) {
+                    if (state == Player.STATE_ENDED && !endHandled) {
+                        endHandled = true;
                         LogStore.add(PlayerActivity.this,"Lecture","Film terminé : "+title);
-                        if (getIntent().getBooleanExtra("sleep_when_done", true)) SleepHelper.sleepNow(PlayerActivity.this);
+                        handleEndOfFilm();
                     }
                 }
                 @Override public void onPlayerError(PlaybackException error) {
-                    String msg = error.getMessage()==null ? error.toString() : error.getMessage(); AppState.prefs(PlayerActivity.this).edit().putString("last_play_error", msg).apply(); LogStore.add(PlayerActivity.this,"Erreur","Lecture de "+title+" : "+msg);
+                    String msg = error.getMessage()==null ? error.toString() : error.getMessage();
+                    AppState.prefs(PlayerActivity.this).edit().putString("last_play_error", msg).apply();
+                    LogStore.add(PlayerActivity.this,"Erreur","Lecture de "+title+" : "+msg);
+                    if (AppState.isShabbatArmed(PlayerActivity.this)) {
+                        LogStore.add(PlayerActivity.this,"Mode Shabbat","Erreur Plex · retour à l’écran noir armé");
+                        returnToArmedMode();
+                    }
                 }
             });
             player.prepare(); player.play();
             AppState.prefs(this).edit().putLong("last_play_started", System.currentTimeMillis()).putString("last_play_title", title).apply();
             LogStore.add(this,"Lecture","Préparation : "+title+" · audio "+movie.optString("audioLabel","auto")+" · sous-titres "+movie.optString("subtitleLabel","Aucun")+" · volume "+vol+" %");
         } catch (Exception e) {
-            AppState.prefs(this).edit().putString("last_play_error", e.toString()).apply(); LogStore.add(this,"Erreur","Impossible de préparer le film : "+e); finish();
+            AppState.prefs(this).edit().putString("last_play_error", e.toString()).apply();
+            LogStore.add(this,"Erreur","Impossible de préparer le film : "+e);
+            if (AppState.isShabbatArmed(this)) returnToArmedMode(); else finish();
         }
+    }
+
+    private void handleEndOfFilm() {
+        if (AppState.isShabbatArmed(this)) {
+            if (AppState.hasFutureSchedule(this)) {
+                LogStore.add(this,"Mode Shabbat","Séance suivante détectée · retour au noir intégral");
+                returnToArmedMode();
+            } else {
+                LogStore.add(this,"Mode Shabbat","Dernière séance terminée · tentative de veille Philips");
+                if (PhilipsTvClient.isPaired(this)) {
+                    SleepHelper.sleepNow(this, (ok, msg) -> {
+                        if (ok) {
+                            AppState.setShabbatArmed(PlayerActivity.this, false);
+                            LogStore.add(PlayerActivity.this,"Mode Shabbat","Dernière séance terminée · mode désarmé après veille Philips");
+                            finish();
+                        } else {
+                            LogStore.add(PlayerActivity.this,"Mode Shabbat","Veille Philips impossible · maintien en noir intégral");
+                            returnToArmedMode();
+                        }
+                    });
+                } else {
+                    LogStore.add(this,"Mode Shabbat","TV non associée pour la veille · maintien en noir intégral");
+                    returnToArmedMode();
+                }
+            }
+        } else if (getIntent().getBooleanExtra("sleep_when_done", true)) {
+            SleepHelper.sleepNow(this);
+        }
+    }
+
+    private void returnToArmedMode() {
+        try {
+            Intent i = new Intent(this, ShabbatModeActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(i);
+        } catch (Throwable t) {
+            LogStore.add(this,"Erreur","Retour Mode Shabbat : "+t.getClass().getSimpleName());
+        }
+        finish();
     }
 
     private String subtitleMime(String codec) {
