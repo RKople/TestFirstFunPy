@@ -27,7 +27,7 @@ public class MainActivity extends Activity {
         LinearLayout root = Ui.page(this);
         LinearLayout top = new LinearLayout(this); top.setOrientation(LinearLayout.HORIZONTAL); top.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout heading = new LinearLayout(this); heading.setOrientation(LinearLayout.VERTICAL); heading.addView(Ui.eyebrow(this, "Accueil")); heading.addView(Ui.title(this, "Shabbat TV"), Ui.lp(-1,-2,this,3));
-        top.addView(heading, new LinearLayout.LayoutParams(0,-2,1)); top.addView(Ui.pill(this, "v1.9", false)); root.addView(top);
+        top.addView(heading, new LinearLayout.LayoutParams(0,-2,1)); top.addView(Ui.pill(this, "v1.10", false)); root.addView(top);
         root.addView(Ui.subtitle(this, "Prépare les films et les horaires, puis arme le Mode Shabbat longue durée."), Ui.lp(-1,-2,this,5));
 
         LinearLayout statusCard = Ui.card(this); LinearLayout stateRow = new LinearLayout(this); stateRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -37,7 +37,7 @@ public class MainActivity extends Activity {
 
         LinearLayout armCard = Ui.card(this);
         armCard.addView(Ui.eyebrow(this, "Mode Shabbat longue durée"));
-        TextView armInfo = Ui.body(this, "Garde Android actif sur un écran OLED totalement noir. C’est le mode recommandé pour les séances programmées plusieurs heures à l’avance.");
+        TextView armInfo = Ui.body(this, "Garde Android actif sur un écran OLED noir avec une lecture vidéo noire silencieuse en arrière-plan pour empêcher l’économiseur Ambilight TV.");
         armInfo.setMaxLines(4); armCard.addView(armInfo, Ui.lp(-1,-2,this,6));
         armButton = Ui.button(this, "Armer Shabbat", true);
         armButton.setOnClickListener(v -> armShabbat());
@@ -105,13 +105,13 @@ public class MainActivity extends Activity {
             s.put("server", AppState.prefs(this).getString("plex_server_name", "Plex"));
             s.put("audioLabel", movie.optString("audioLabel", "Automatique"));
             s.put("subtitleLabel", movie.optString("subtitleLabel", movie.optBoolean("subtitlesOff", true) ? "Aucun" : "Automatiques"));
-            s.put("alarmMode", "armed-engine-test");
+            s.put("alarmMode", "armed-engine-test-v110");
             s.put("createdAt", System.currentTimeMillis());
             JSONArray a = AppState.schedules(this);
             a.put(s);
             AppState.setSchedules(this, a);
             AppState.setShabbatArmed(this, true);
-            LogStore.add(this, "Test", "Mode Shabbat 20 min armé · écran noir 10 min · countdown 10 min · volume 37 %");
+            LogStore.add(this, "Test", "Mode Shabbat v1.10 20 min armé · vidéo noire active 10 min · countdown 10 min · volume 37 %");
             openArmedMode();
         } catch (Exception e) {
             automationNote.setText("Impossible de préparer le test : " + e.getMessage());
@@ -134,7 +134,7 @@ public class MainActivity extends Activity {
         plexState.setText(plex?server:"À connecter");plexState.setTextColor(plex?Ui.GOOD:Ui.TEXT);movieState.setText(m==null?"Aucun film":m.optString("title","Film"));scheduleState.setText(n==0?"Aucune séance":n+" séance"+(n>1?"s":""));
         boolean armed = AppState.isShabbatArmed(this);
         if (armButton != null) armButton.setText(armed ? "Mode Shabbat armé ✓" : "Armer Shabbat");
-        if(automationNote!=null)automationNote.setText("Mode longue durée : Android reste actif et l’écran OLED est noir jusqu’au countdown des 10 dernières minutes. Les AlarmClock/WakeReceiver restent uniquement en secours. Volume films fixé à "+AppState.FILM_VOLUME_PERCENT+" %. Extinction Philips : "+(PhilipsTvClient.isPaired(this)?"prête ✓":"à associer dans Tests")+".");
+        if(automationNote!=null)automationNote.setText("Mode longue durée v1.10 : vidéo noire silencieuse active + Android maintenu éveillé pour bloquer l’économiseur Ambilight TV. Countdown 10 min avant le film. Les AlarmClock/WakeReceiver restent uniquement en secours. Volume films fixé à "+AppState.FILM_VOLUME_PERCENT+" %. Extinction Philips : "+(PhilipsTvClient.isPaired(this)?"prête ✓":"à associer dans Tests")+".");
     }
 
     private void requestExact(){if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S){try{Intent i=new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);i.setData(Uri.parse("package:"+getPackageName()));startActivity(i);}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}}
