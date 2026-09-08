@@ -11,7 +11,10 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.util.UUID;
 
 public class MainActivity extends Activity {
     private TextView plexState, movieState, scheduleState, automationNote;
@@ -39,6 +42,9 @@ public class MainActivity extends Activity {
         armButton = Ui.button(this, "Armer Shabbat", true);
         armButton.setOnClickListener(v -> armShabbat());
         armCard.addView(armButton, Ui.lp(-1, Ui.dp(this, Ui.controlHeight(this)), this, 12));
+        Button longTest = Ui.button(this, "Test mode Shabbat · film dans 20 min", false);
+        longTest.setOnClickListener(v -> startLongModeTest());
+        armCard.addView(longTest, Ui.lp(-1, Ui.dp(this, Ui.smallControlHeight(this)), this, 7));
         TextView warning = Ui.muted(this, "Important : après avoir armé, ne mets pas la TV en veille avec la télécommande. L’écran devient noir automatiquement.");
         warning.setMaxLines(3); armCard.addView(warning, Ui.lp(-1,-2,this,7));
         root.addView(armCard, Ui.lp(-1,-2,this,Ui.compact(this)?14:20));
@@ -73,6 +79,46 @@ public class MainActivity extends Activity {
         }
         AppState.setShabbatArmed(this, true);
         LogStore.add(this, "Mode Shabbat", "Armement demandé depuis l’accueil");
+        openArmedMode();
+    }
+
+    private void startLongModeTest() {
+        JSONObject movie = AppState.selectedMovie(this);
+        if (!AppState.plexConnected(this) || movie == null) {
+            automationNote.setText("Connecte Plex et sélectionne un film avant de lancer le test 20 minutes.");
+            return;
+        }
+        try {
+            long when = System.currentTimeMillis() + 20 * 60_000L;
+            String id = "armedtest-" + UUID.randomUUID();
+            JSONObject s = new JSONObject();
+            s.put("id", id);
+            s.put("when", when);
+            s.put("wakeAt", when - 10 * 60_000L);
+            s.put("retryAt", 0L);
+            s.put("visibleEstimateAt", when - 10 * 60_000L);
+            s.put("title", movie.optString("title", "Film"));
+            s.put("movie", movie.toString());
+            s.put("durationMs", movie.optLong("durationMs", 0L));
+            s.put("endAt", movie.optLong("durationMs", 0L) > 0 ? when + movie.optLong("durationMs", 0L) : 0L);
+            s.put("volume", AppState.FILM_VOLUME_PERCENT);
+            s.put("server", AppState.prefs(this).getString("plex_server_name", "Plex"));
+            s.put("audioLabel", movie.optString("audioLabel", "Automatique"));
+            s.put("subtitleLabel", movie.optString("subtitleLabel", movie.optBoolean("subtitlesOff", true) ? "Aucun" : "Automatiques"));
+            s.put("alarmMode", "armed-engine-test");
+            s.put("createdAt", System.currentTimeMillis());
+            JSONArray a = AppState.schedules(this);
+            a.put(s);
+            AppState.setSchedules(this, a);
+            AppState.setShabbatArmed(this, true);
+            LogStore.add(this, "Test", "Mode Shabbat 20 min armé · écran noir 10 min · countdown 10 min · volume 37 %");
+            openArmedMode();
+        } catch (Exception e) {
+            automationNote.setText("Impossible de préparer le test : " + e.getMessage());
+        }
+    }
+
+    private void openArmedMode() {
         Intent i = new Intent(this, ShabbatModeActivity.class);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(i);
