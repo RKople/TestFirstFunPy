@@ -198,13 +198,11 @@ public class ShabbatModeActivity extends Activity {
         long left = when - now;
         String id = next.optString("id", "");
 
-        // Crash/reboot recovery: a recently missed session launches immediately.
         if (left <= 1_000L && left > -AppState.RECOVERY_GRACE_MS) {
             launch(next, left < -1_000L);
             return;
         }
 
-        // Brief confirmation immediately after arming, then true OLED black.
         if (now - openedAt < INTRO_MS && left > COUNTDOWN_WINDOW_MS) {
             if (!introLogged) {
                 introLogged = true;
@@ -305,7 +303,6 @@ public class ShabbatModeActivity extends Activity {
         if (recovery) LogStore.add(this, "Mode Shabbat", "Récupération après retard/redémarrage · lancement immédiat");
         else LogStore.add(this, "Mode Shabbat", "Heure cible atteinte · arrêt vidéo noire puis lancement direct du film");
 
-        // Free the background hardware decoder immediately before Plex takes it.
         releaseKeeperPlayback();
         PlaybackLauncher.launch(this, movie, AppState.FILM_VOLUME_PERCENT, id, false);
     }
@@ -327,7 +324,7 @@ public class ShabbatModeActivity extends Activity {
                     }
 
                     @Override public void onPlayerError(PlaybackException error) {
-                        LogStore.add(ShabbatModeActivity.this, "Erreur", "Vidéo noire anti-économiseur : " + error.errorCodeName);
+                        LogStore.add(ShabbatModeActivity.this, "Erreur", "Vidéo noire anti-économiseur : " + error.getErrorCodeName());
                         handler.postDelayed(() -> {
                             releaseKeeperPlayback();
                             ensureKeeperPlayback();
