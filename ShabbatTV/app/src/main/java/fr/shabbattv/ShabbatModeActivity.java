@@ -12,8 +12,16 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.PlayerView;
 
 import org.json.JSONObject;
 
@@ -22,12 +30,13 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * v1.9 long-duration mode.
+ * v1.10 long-duration mode.
  *
- * The Philips OLED810 does not reliably deliver alarms after several hours in deep standby.
- * This activity therefore keeps Android awake and the app in the foreground while rendering
- * true OLED black. It does NOT rely on waking Android at the film time. Ten minutes before
- * the next session it shows a countdown, then uses the already-validated PlaybackLauncher.
+ * v1.9 proved that the active engine survives and launches the film on time, but Philips' own
+ * "Ambilight TV" screensaver could still cover the app after ~7 minutes. v1.10 therefore keeps
+ * a REAL silent Media3 video playback session running behind the black UI for the entire armed
+ * wait/countdown period. The pixels remain black, but Philips/Android sees active video playback
+ * rather than an idle static Activity.
  */
 public class ShabbatModeActivity extends Activity {
     private static final long COUNTDOWN_WINDOW_MS = 10 * 60_000L;
@@ -35,15 +44,20 @@ public class ShabbatModeActivity extends Activity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private PowerManager.WakeLock cpuLock;
+    private FrameLayout stage;
+    private PlayerView blackVideoView;
+    private ExoPlayer blackKeeper;
     private LinearLayout root;
     private TextView eyebrow, title, countdown, clock, note;
     private long openedAt;
     private String shownScheduleId = "";
     private boolean launching = false;
     private boolean introLogged = false;
+    private boolean keeperReadyLogged = false;
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
+            ensureKeeperPlayback();
             updateState();
         }
     };
@@ -60,12 +74,14 @@ public class ShabbatModeActivity extends Activity {
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
                 WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         );
+        getWindow().getDecorView().setKeepScreenOn(true);
         openedAt = System.currentTimeMillis();
         buildUi();
         acquireCpuLock();
+        ensureKeeperPlayback();
 
         if (!AppState.isShabbatArmed(this)) AppState.setShabbatArmed(this, true);
-        LogStore.add(this, "Mode Shabbat", "Mode longue veille armé · Android maintenu actif · écran OLED noir");
+        LogStore.add(this, "Mode Shabbat", "Mode v1.10 armé · Android actif · vidéo noire silencieuse anti-économiseur");
         handler.post(tick);
     }
 
@@ -74,6 +90,8 @@ public class ShabbatModeActivity extends Activity {
         setIntent(intent);
         openedAt = System.currentTimeMillis();
         launching = false;
+        introLogged = false;
+        ensureKeeperPlayback();
         handler.removeCallbacks(tick);
         handler.post(tick);
     }
@@ -81,16 +99,30 @@ public class ShabbatModeActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         Ui.prepareWindow(this);
+        getWindow().getDecorView().setKeepScreenOn(true);
+        launching = false;
+        ensureKeeperPlayback();
         handler.removeCallbacks(tick);
         handler.post(tick);
     }
 
     private void buildUi() {
+        stage = new FrameLayout(this);
+        stage.setBackgroundColor(Color.BLACK);
+        stage.setKeepScreenOn(true);
+
+        blackVideoView = new PlayerView(this);
+        blackVideoView.setBackgroundColor(Color.BLACK);
+        blackVideoView.setUseController(false);
+        blackVideoView.setKeepScreenOn(true);
+        stage.addView(blackVideoView, new FrameLayout.LayoutParams(-1, -1));
+
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(Ui.dp(this, 70), Ui.dp(this, 40), Ui.dp(this, 70), Ui.dp(this, 40));
-        root.setBackgroundColor(Color.BLACK);
+        root.setBackgroundColor(Color.TRANSPARENT);
+        root.setKeepScreenOn(true);
 
         eyebrow = new TextView(this);
         eyebrow.setText("SHABBAT TV");
@@ -127,7 +159,8 @@ public class ShabbatModeActivity extends Activity {
         note.setGravity(Gravity.CENTER);
         root.addView(note, Ui.lp(-1, -2, this, 22));
 
-        setContentView(root);
+        stage.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(stage);
         showIntro();
     }
 
@@ -175,7 +208,7 @@ public class ShabbatModeActivity extends Activity {
         if (now - openedAt < INTRO_MS && left > COUNTDOWN_WINDOW_MS) {
             if (!introLogged) {
                 introLogged = true;
-                LogStore.add(this, "Mode Shabbat", "Confirmation affichée puis passage au noir intégral");
+                LogStore.add(this, "Mode Shabbat", "Confirmation affichée puis passage au noir intégral avec lecture vidéo active");
             }
             showIntro();
             scheduleNextTick(1_000L);
@@ -210,7 +243,6 @@ public class ShabbatModeActivity extends Activity {
             long when = o.optLong("when", 0L);
             if (when <= 0L) continue;
             if (when <= now && when > now - AppState.RECOVERY_GRACE_MS) {
-                // Most recently missed session wins.
                 if (when > missedWhen) { missedWhen = when; missed = o; }
             } else if (when > now && when < futureWhen) {
                 futureWhen = when; future = o;
@@ -220,7 +252,8 @@ public class ShabbatModeActivity extends Activity {
     }
 
     private void showBlack() {
-        root.setBackgroundColor(Color.BLACK);
+        stage.setBackgroundColor(Color.BLACK);
+        root.setBackgroundColor(Color.TRANSPARENT);
         setUiVisible(false);
     }
 
@@ -235,7 +268,6 @@ public class ShabbatModeActivity extends Activity {
         clock.setText("Début prévu à " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(when)));
         note.setText("Audio : " + s.optString("audioLabel", "Automatique") + "  ·  Sous-titres : " + s.optString("subtitleLabel", "Aucun") + "  ·  Volume 37 %");
 
-        // Tiny movement to avoid a perfectly fixed OLED composition.
         int step = (int)((System.currentTimeMillis() / 30_000L) % 4L);
         root.setTranslationX(Ui.dp(this, step == 0 ? -3 : step == 2 ? 3 : 0));
         root.setTranslationY(Ui.dp(this, step == 1 ? -2 : step == 3 ? 2 : 0));
@@ -271,8 +303,57 @@ public class ShabbatModeActivity extends Activity {
             return;
         }
         if (recovery) LogStore.add(this, "Mode Shabbat", "Récupération après retard/redémarrage · lancement immédiat");
-        else LogStore.add(this, "Mode Shabbat", "Heure cible atteinte · lancement direct du film");
+        else LogStore.add(this, "Mode Shabbat", "Heure cible atteinte · arrêt vidéo noire puis lancement direct du film");
+
+        // Free the background hardware decoder immediately before Plex takes it.
+        releaseKeeperPlayback();
         PlaybackLauncher.launch(this, movie, AppState.FILM_VOLUME_PERCENT, id, false);
+    }
+
+    private void ensureKeeperPlayback() {
+        if (launching || isFinishing()) return;
+        try {
+            if (blackKeeper == null) {
+                blackKeeper = new ExoPlayer.Builder(this).build();
+                blackKeeper.setWakeMode(C.WAKE_MODE_LOCAL);
+                blackKeeper.setVolume(0f);
+                blackKeeper.setRepeatMode(Player.REPEAT_MODE_ONE);
+                blackKeeper.addListener(new Player.Listener() {
+                    @Override public void onPlaybackStateChanged(int state) {
+                        if (state == Player.STATE_READY && !keeperReadyLogged) {
+                            keeperReadyLogged = true;
+                            LogStore.add(ShabbatModeActivity.this, "Mode Shabbat", "Vidéo noire silencieuse active · protection anti-économiseur prête");
+                        }
+                    }
+
+                    @Override public void onPlayerError(PlaybackException error) {
+                        LogStore.add(ShabbatModeActivity.this, "Erreur", "Vidéo noire anti-économiseur : " + error.errorCodeName);
+                        handler.postDelayed(() -> {
+                            releaseKeeperPlayback();
+                            ensureKeeperPlayback();
+                        }, 2_000L);
+                    }
+                });
+                blackVideoView.setPlayer(blackKeeper);
+                blackKeeper.setMediaItem(MediaItem.fromUri(BlackPlaybackAsset.uri(this)));
+                blackKeeper.prepare();
+            }
+            if (!blackKeeper.isPlaying()) blackKeeper.play();
+        } catch (Throwable t) {
+            LogStore.add(this, "Erreur", "Impossible de maintenir la vidéo noire : " + t.getClass().getSimpleName());
+        }
+    }
+
+    private void releaseKeeperPlayback() {
+        try {
+            if (blackVideoView != null) blackVideoView.setPlayer(null);
+            if (blackKeeper != null) {
+                blackKeeper.stop();
+                blackKeeper.release();
+                blackKeeper = null;
+            }
+        } catch (Throwable ignored) {}
+        keeperReadyLogged = false;
     }
 
     private void scheduleNextTick(long delay) {
@@ -305,6 +386,7 @@ public class ShabbatModeActivity extends Activity {
 
     @Override protected void onDestroy() {
         handler.removeCallbacks(tick);
+        releaseKeeperPlayback();
         try { if (cpuLock != null && cpuLock.isHeld()) cpuLock.release(); } catch (Throwable ignored) {}
         super.onDestroy();
     }
