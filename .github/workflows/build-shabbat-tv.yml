@@ -3,6 +3,9 @@ name: Build Shabbat TV APK
 on:
   push:
     branches: ["shabbat-tv-build"]
+    paths:
+      - "ShabbatTV/**"
+      - ".github/workflows/build-shabbat-tv.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,34 +18,48 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: shabbat-tv-build
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build debug APK
-        run: gradle :app:assembleDebug
+      - name: Install media verifier if needed
+        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+      - name: Verify architecture and actual black video
+        run: python3 ShabbatTV/tools/verify_architecture.py
+      - name: Test and build APK
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
         working-directory: ShabbatTV
-      - name: Upload APK artifact
+      - name: Upload APK and verification results
         uses: actions/upload-artifact@v4
         with:
-          name: ShabbatTV-v1.10
-          path: ShabbatTV/app/build/outputs/apk/debug/app-debug.apk
-      - name: Publish versioned APK in repo
+          name: ShabbatTV-v1.11
+          path: |
+            ShabbatTV/app/build/outputs/apk/debug/app-debug.apk
+            ShabbatTV/verification-report.json
+            ShabbatTV/app/build/test-results/testDebugUnitTest/*.xml
+      - name: Publish verified APK
         run: |
-          cp ShabbatTV/app/build/outputs/apk/debug/app-debug.apk /tmp/ShabbatTV-v1.10.apk
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin shabbat-tv-build
-          git reset --hard origin/shabbat-tv-build
-          cp /tmp/ShabbatTV-v1.10.apk ShabbatTV-v1.10.apk
-          git add ShabbatTV-v1.10.apk
-          if git diff --cached --quiet; then
-            echo "APK unchanged"
-          else
-            git commit -m "Publish Shabbat TV v1.10 APK [skip ci]"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$GITHUB_SHA" ]; then
+            echo "Branch changed during build; refusing to publish a stale APK."
+            exit 1
+          fi
+          cp ShabbatTV/app/build/outputs/apk/debug/app-debug.apk ShabbatTV-v1.11.apk
+          sha256sum ShabbatTV-v1.11.apk > ShabbatTV-v1.11.apk.sha256
+          git add ShabbatTV-v1.11.apk ShabbatTV-v1.11.apk.sha256
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish verified Shabbat TV v1.11 APK [skip ci]"
             git push origin HEAD:shabbat-tv-build
           fi

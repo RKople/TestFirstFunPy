@@ -1,141 +1,109 @@
 package fr.shabbattv;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
-import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.util.UUID;
-
 public class MainActivity extends Activity {
-    private TextView plexState, movieState, scheduleState, automationNote;
-    private Button armButton;
+    private TextView status, feedback;
 
-    @Override protected void onCreate(Bundle b){ super.onCreate(b); build(); }
-    @Override protected void onResume(){ super.onResume(); refresh(); }
-
-    private void build(){
+    @Override protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        UpgradeCleanup.run(this);
         LinearLayout root = Ui.page(this);
-        LinearLayout top = new LinearLayout(this); top.setOrientation(LinearLayout.HORIZONTAL); top.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout heading = new LinearLayout(this); heading.setOrientation(LinearLayout.VERTICAL); heading.addView(Ui.eyebrow(this, "Accueil")); heading.addView(Ui.title(this, "Shabbat TV"), Ui.lp(-1,-2,this,3));
-        top.addView(heading, new LinearLayout.LayoutParams(0,-2,1)); top.addView(Ui.pill(this, "v1.10", false)); root.addView(top);
-        root.addView(Ui.subtitle(this, "Prépare les films et les horaires, puis arme le Mode Shabbat longue durée."), Ui.lp(-1,-2,this,5));
+        Ui.header(root, this, "v1.11 bêta", "Shabbat TV", "Tes films Plex, aux horaires choisis. Une vidéo noire reste en lecture entre les séances.");
+        LinearLayout summary = Ui.card(this);
+        status = Ui.body(this, ""); status.setMaxLines(4);
+        summary.addView(status); root.addView(summary, Ui.lp(-1, -2, this, 14));
 
-        LinearLayout statusCard = Ui.card(this); LinearLayout stateRow = new LinearLayout(this); stateRow.setOrientation(LinearLayout.HORIZONTAL);
-        plexState = Ui.body(this, "—"); movieState = Ui.body(this, "—"); scheduleState = Ui.body(this, "—");
-        stateRow.addView(stateColumn("PLEX", plexState), new LinearLayout.LayoutParams(0,-2,1)); stateRow.addView(stateColumn("FILM", movieState), gapWeight()); stateRow.addView(stateColumn("PLANNING", scheduleState), gapWeight()); statusCard.addView(stateRow);
-        root.addView(statusCard, Ui.lp(-1,-2,this,Ui.compact(this)?16:24));
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.addView(navButton("Plex", PlexSetupActivity.class), weight(false));
+        nav.addView(navButton("Films", MoviePickerActivity.class), weight(true));
+        nav.addView(navButton("Planning", ScheduleActivity.class), weight(true));
+        root.addView(nav, Ui.lp(-1, Ui.dp(this, Ui.controlHeight(this)), this, 12));
 
-        LinearLayout armCard = Ui.card(this);
-        armCard.addView(Ui.eyebrow(this, "Mode Shabbat longue durée"));
-        TextView armInfo = Ui.body(this, "Garde Android actif sur un écran OLED noir avec une lecture vidéo noire silencieuse en arrière-plan pour empêcher l’économiseur Ambilight TV.");
-        armInfo.setMaxLines(4); armCard.addView(armInfo, Ui.lp(-1,-2,this,6));
-        armButton = Ui.button(this, "Armer Shabbat", true);
-        armButton.setOnClickListener(v -> armShabbat());
-        armCard.addView(armButton, Ui.lp(-1, Ui.dp(this, Ui.controlHeight(this)), this, 12));
-        Button longTest = Ui.button(this, "Test mode Shabbat · film dans 20 min", false);
-        longTest.setOnClickListener(v -> startLongModeTest());
-        armCard.addView(longTest, Ui.lp(-1, Ui.dp(this, Ui.smallControlHeight(this)), this, 7));
-        TextView warning = Ui.muted(this, "Important : après avoir armé, ne mets pas la TV en veille avec la télécommande. L’écran devient noir automatiquement.");
-        warning.setMaxLines(3); armCard.addView(warning, Ui.lp(-1,-2,this,7));
-        root.addView(armCard, Ui.lp(-1,-2,this,Ui.compact(this)?14:20));
+        LinearLayout mode = Ui.card(this);
+        mode.addView(Ui.eyebrow(this, "Lecture continue"));
+        mode.addView(Ui.body(this, "Vidéo noire → compte à rebours → film → vidéo noire"), Ui.lp(-1, -2, this, 6));
+        Button start = Ui.button(this, "Démarrer le mode Shabbat", true);
+        start.setOnClickListener(v -> confirmStart(false));
+        mode.addView(start, Ui.lp(-1, Ui.dp(this, Ui.controlHeight(this)), this, 12));
+        TextView warning = Ui.muted(this, "La TV reste allumée, même quand elle paraît noire. Ne la mets pas en veille. Retour permet d’arrêter le mode.");
+        warning.setMaxLines(4); mode.addView(warning, Ui.lp(-1, -2, this, 8));
+        root.addView(mode, Ui.lp(-1, -2, this, 14));
 
-        root.addView(Ui.eyebrow(this, "Configuration"), Ui.lp(-1,-2,this,Ui.compact(this)?16:24));
-        LinearLayout nav1 = new LinearLayout(this); nav1.setOrientation(LinearLayout.HORIZONTAL);
-        Button plex = Ui.button(this, "Plex", true); plex.setOnClickListener(v -> startActivity(new Intent(this, PlexSetupActivity.class)));
-        Button movies = Ui.button(this, "Films", false); movies.setOnClickListener(v -> startActivity(new Intent(this, MoviePickerActivity.class)));
-        Button plan = Ui.button(this, "Planning", false); plan.setOnClickListener(v -> startActivity(new Intent(this, ScheduleActivity.class)));
-        nav1.addView(plex, weight()); nav1.addView(movies, gapWeight()); nav1.addView(plan, gapWeight()); root.addView(nav1, Ui.lp(-1, Ui.dp(this, Ui.controlHeight(this)), this, 9));
-
-        LinearLayout nav2 = new LinearLayout(this); nav2.setOrientation(LinearLayout.HORIZONTAL);
-        Button tests = Ui.button(this, "Tests", false); tests.setOnClickListener(v -> startActivity(new Intent(this, TestActivity.class)));
-        Button logs = Ui.button(this, "Logs", false); logs.setOnClickListener(v -> startActivity(new Intent(this, LogsActivity.class)));
-        nav2.addView(tests, weight()); nav2.addView(logs, gapWeight()); root.addView(nav2, Ui.lp(-1, Ui.dp(this, Ui.smallControlHeight(this)), this, 7));
-
-        LinearLayout note = Ui.card(this); TextView noteTitle = Ui.body(this, "Sécurité / secours"); noteTitle.setTypeface(null, android.graphics.Typeface.BOLD); note.addView(noteTitle);
-        automationNote=Ui.muted(this,""); note.addView(automationNote, Ui.lp(-1,-2,this,5));
-        Button perm = Ui.button(this, "Vérifier l’autorisation des alarmes", false); perm.setOnClickListener(v -> requestExact()); note.addView(perm, Ui.lp(-1, Ui.dp(this, Ui.smallControlHeight(this)), this, 11));
-        root.addView(note, Ui.lp(-1,-2,this,Ui.compact(this)?14:20));
-        Ui.setScrollable(this, root); refresh();
+        LinearLayout checks = new LinearLayout(this);
+        checks.setOrientation(LinearLayout.HORIZONTAL);
+        Button test = Ui.button(this, "Essai complet · 20 min", false);
+        test.setOnClickListener(v -> confirmStart(true));
+        checks.addView(test, weight(false));
+        Button preview = Ui.button(this, "Tester le film", false);
+        preview.setOnClickListener(v -> preview());
+        checks.addView(preview, weight(true));
+        checks.addView(navButton("Journal", LogsActivity.class), weight(true));
+        root.addView(checks, Ui.lp(-1, Ui.dp(this, Ui.smallControlHeight(this)), this, 12));
+        feedback = Ui.muted(this, ""); feedback.setMaxLines(5);
+        root.addView(feedback, Ui.lp(-1, -2, this, 9));
+        Ui.setScrollable(this, root);
     }
+    @Override protected void onResume() { super.onResume(); refresh(); }
 
-    private void armShabbat() {
-        if (!AppState.plexConnected(this)) {
-            automationNote.setText("Connecte d’abord Plex avant d’armer le Mode Shabbat.");
-            return;
-        }
-        if (AppState.schedules(this).length() == 0) {
-            automationNote.setText("Programme au moins une séance avant d’armer le Mode Shabbat.");
-            return;
-        }
-        AppState.setShabbatArmed(this, true);
-        LogStore.add(this, "Mode Shabbat", "Armement demandé depuis l’accueil");
-        openArmedMode();
+    private Button navButton(String label, Class<? extends Activity> target) {
+        Button b = Ui.button(this, label, false);
+        b.setOnClickListener(v -> startActivity(new Intent(this, target)));
+        return b;
     }
-
-    private void startLongModeTest() {
+    private LinearLayout.LayoutParams weight(boolean gap) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, 1);
+        if (gap) p.setMargins(Ui.dp(this, 8), 0, 0, 0);
+        return p;
+    }
+    private void refresh() {
+        if (status == null) return;
         JSONObject movie = AppState.selectedMovie(this);
-        if (!AppState.plexConnected(this) || movie == null) {
-            automationNote.setText("Connecte Plex et sélectionne un film avant de lancer le test 20 minutes.");
-            return;
+        int count = AppState.schedules(this).length();
+        status.setText("Plex : " + (AppState.plexConnected(this) ? AppState.prefs(this).getString("plex_server_name", "Connecté") : "À connecter")
+            + "\nFilm sélectionné : " + (movie == null ? "Aucun" : movie.optString("title", "Film"))
+            + "\nPlanning : " + count + " séance(s) à venir · volume films " + AppState.FILM_VOLUME_PERCENT + " %");
+        String error = AppState.prefs(this).getString("mode_error", "");
+        if (!error.isEmpty()) feedback.setText(error + "\nConsulte le journal avant de relancer le mode.");
+    }
+    private void confirmStart(boolean test) {
+        if (!AppState.plexConnected(this)) { feedback.setText("Connecte d’abord Plex."); return; }
+        if (test && AppState.selectedMovie(this) == null) { feedback.setText("Choisis d’abord le film à tester."); return; }
+        if (!test && AppState.schedules(this).length() == 0) { feedback.setText("Ajoute au moins une séance dans Planning."); return; }
+        String currentServer = AppState.prefs(this).getString("plex_server_machine_id", "");
+        JSONArray sessions = AppState.schedules(this);
+        for (int i = 0; i < sessions.length(); i++) {
+            JSONObject s = sessions.optJSONObject(i);
+            String expected = s == null ? "" : s.optString("serverId", "");
+            if (!expected.isEmpty() && !expected.equals(currentServer)) {
+                feedback.setText("Une séance utilise un autre serveur Plex. Sélectionne le serveur correspondant ou recrée cette séance."); return;
+            }
         }
-        try {
-            long when = System.currentTimeMillis() + 20 * 60_000L;
-            String id = "armedtest-" + UUID.randomUUID();
-            JSONObject s = new JSONObject();
-            s.put("id", id);
-            s.put("when", when);
-            s.put("wakeAt", when - 10 * 60_000L);
-            s.put("retryAt", 0L);
-            s.put("visibleEstimateAt", when - 10 * 60_000L);
-            s.put("title", movie.optString("title", "Film"));
-            s.put("movie", movie.toString());
-            s.put("durationMs", movie.optLong("durationMs", 0L));
-            s.put("endAt", movie.optLong("durationMs", 0L) > 0 ? when + movie.optLong("durationMs", 0L) : 0L);
-            s.put("volume", AppState.FILM_VOLUME_PERCENT);
-            s.put("server", AppState.prefs(this).getString("plex_server_name", "Plex"));
-            s.put("audioLabel", movie.optString("audioLabel", "Automatique"));
-            s.put("subtitleLabel", movie.optString("subtitleLabel", movie.optBoolean("subtitlesOff", true) ? "Aucun" : "Automatiques"));
-            s.put("alarmMode", "armed-engine-test-v110");
-            s.put("createdAt", System.currentTimeMillis());
-            JSONArray a = AppState.schedules(this);
-            a.put(s);
-            AppState.setSchedules(this, a);
-            AppState.setShabbatArmed(this, true);
-            LogStore.add(this, "Test", "Mode Shabbat v1.10 20 min armé · vidéo noire active 10 min · countdown 10 min · volume 37 %");
-            openArmedMode();
-        } catch (Exception e) {
-            automationNote.setText("Impossible de préparer le test : " + e.getMessage());
-        }
+        new AlertDialog.Builder(this).setTitle(test ? "Essai du mode complet" : "Avant de démarrer")
+            .setMessage("Vérifie l’heure de la TV et désactive son minuteur d’arrêt ainsi que son arrêt automatique d’inactivité. Coupe Ambilight pour garder la pièce sombre.\n\nLaisse Shabbat TV au premier plan, sans appuyer sur Marche/Arrêt ni Accueil. La vidéo noire ne remplace pas ces réglages.\n\n" + (test ? "Le film sélectionné commencera dans 20 minutes, via le même planning que les autres séances." : "Le compte à rebours apparaît 10 minutes avant chaque film. Après le dernier film, la vidéo noire continue jusqu’à ton arrêt manuel."))
+            .setNegativeButton("Pas maintenant", null)
+            .setPositiveButton("Démarrer", (d, which) -> {
+                try {
+                    if (test) AppState.addSchedule(this, AppState.selectedMovie(this), System.currentTimeMillis() + 20 * 60_000L);
+                    AppState.prefs(this).edit().remove("mode_error").apply();
+                    AppState.setShabbatArmed(this, true);
+                    LogStore.add(this, "Mode Shabbat", "Démarrage manuel" + (test ? " · essai 20 minutes" : ""));
+                    startActivity(new Intent(this, ShabbatModeActivity.class));
+                } catch (Exception e) { feedback.setText(e.getMessage()); }
+            }).show();
     }
-
-    private void openArmedMode() {
-        Intent i = new Intent(this, ShabbatModeActivity.class);
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        startActivity(i);
+    private void preview() {
+        JSONObject movie = AppState.selectedMovie(this);
+        if (!AppState.plexConnected(this) || movie == null) { feedback.setText("Connecte Plex et sélectionne un film."); return; }
+        PlaybackLauncher.launch(this, movie.toString(), "");
     }
-
-    private LinearLayout stateColumn(String label, TextView value){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.addView(Ui.eyebrow(this,label));value.setMaxLines(2);value.setEllipsize(android.text.TextUtils.TruncateAt.END);c.addView(value,Ui.lp(-1,-2,this,4));return c;}
-    private LinearLayout.LayoutParams weight(){return new LinearLayout.LayoutParams(0,-1,1);}
-    private LinearLayout.LayoutParams gapWeight(){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);p.setMargins(Ui.dp(this,Ui.compact(this)?6:10),0,0,0);return p;}
-
-    private void refresh(){
-        if(plexState==null)return;
-        boolean plex=AppState.plexConnected(this); JSONObject m=AppState.selectedMovie(this); int n=AppState.schedules(this).length(); String server=AppState.prefs(this).getString("plex_server_name","Plex");
-        plexState.setText(plex?server:"À connecter");plexState.setTextColor(plex?Ui.GOOD:Ui.TEXT);movieState.setText(m==null?"Aucun film":m.optString("title","Film"));scheduleState.setText(n==0?"Aucune séance":n+" séance"+(n>1?"s":""));
-        boolean armed = AppState.isShabbatArmed(this);
-        if (armButton != null) armButton.setText(armed ? "Mode Shabbat armé ✓" : "Armer Shabbat");
-        if(automationNote!=null)automationNote.setText("Mode longue durée v1.10 : vidéo noire silencieuse active + Android maintenu éveillé pour bloquer l’économiseur Ambilight TV. Countdown 10 min avant le film. Les AlarmClock/WakeReceiver restent uniquement en secours. Volume films fixé à "+AppState.FILM_VOLUME_PERCENT+" %. Extinction Philips : "+(PhilipsTvClient.isPaired(this)?"prête ✓":"à associer dans Tests")+".");
-    }
-
-    private void requestExact(){if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S){try{Intent i=new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);i.setData(Uri.parse("package:"+getPackageName()));startActivity(i);}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}}
 }

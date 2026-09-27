@@ -2,181 +2,118 @@ package fr.shabbattv;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
-
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
+/** Keeps the existing preference namespace: updating must not erase Plex or the planning. */
 public final class AppState {
     public static final String PREFS = "shabbat_tv_v1";
     public static final int FILM_VOLUME_PERCENT = 37;
-    public static final long RECOVERY_GRACE_MS = 6 * 60 * 60_000L;
-
     private AppState() {}
 
     public static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
-
     public static String clientId(Context c) {
-        SharedPreferences p = prefs(c);
-        String id = p.getString("client_id", null);
-        if (id == null || id.isEmpty()) {
+        String id = prefs(c).getString("client_id", "");
+        if (id.isEmpty()) {
             id = UUID.randomUUID().toString();
-            p.edit().putString("client_id", id).apply();
+            prefs(c).edit().putString("client_id", id).apply();
         }
         return id;
     }
-
     public static boolean plexConnected(Context c) {
         return !prefs(c).getString("plex_account_token", "").isEmpty()
-                && !prefs(c).getString("plex_server_token", "").isEmpty()
-                && !prefs(c).getString("plex_server_url", "").isEmpty();
+            && !prefs(c).getString("plex_server_token", "").isEmpty()
+            && !prefs(c).getString("plex_server_url", "").isEmpty();
     }
-
     public static JSONObject selectedMovie(Context c) {
-        String raw = prefs(c).getString("selected_movie", "");
-        if (raw.isEmpty()) return null;
-        try { return new JSONObject(raw); } catch (Exception e) { return null; }
+        try { return new JSONObject(prefs(c).getString("selected_movie", "")); }
+        catch (Exception e) { return null; }
     }
-
     public static void setSelectedMovie(Context c, JSONObject movie) {
         prefs(c).edit().putString("selected_movie", movie == null ? "" : movie.toString()).apply();
     }
-
-    private static JSONArray rawSchedules(Context c) {
-        String raw = prefs(c).getString("schedules", "[]");
-        try { return new JSONArray(raw); } catch (Exception e) { return new JSONArray(); }
-    }
-
-    /** Returns only future sessions for the normal planning UI. */
-    public static JSONArray schedules(Context c) {
-        JSONArray src = rawSchedules(c);
-        JSONArray keep = new JSONArray();
-        long now = System.currentTimeMillis();
-        boolean changed = false;
-        for (int i = 0; i < src.length(); i++) {
-            JSONObject o = src.optJSONObject(i);
-            if (o == null) { changed = true; continue; }
-            long when = o.optLong("when", 0L);
-            if (when > 0 && when < now) {
-                changed = true;
-                continue;
+    /** Reading never deletes sessions. Only an explicit action or the active engine consumes them. */
+    public static JSONArray pendingSchedules(Context c) {
+        List<JSONObject> sorted = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(prefs(c).getString("schedules", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.optJSONObject(i);
+                if (o != null) sorted.add(o);
             }
-            keep.put(o);
-        }
-        if (changed && !isShabbatArmed(c)) setSchedules(c, keep);
-        return keep;
+        } catch (Exception ignored) {}
+        Collections.sort(sorted, (a, b) -> Long.compare(a.optLong("when"), b.optLong("when")));
+        JSONArray out = new JSONArray();
+        for (JSONObject o : sorted) out.put(o);
+        return out;
     }
-
-    /**
-     * While Shabbat mode is armed, keep recently-past sessions available for crash/reboot recovery.
-     * PlaybackLauncher removes a session immediately once it is actually launched.
-     */
-    public static JSONArray recoverableSchedules(Context c) {
-        JSONArray src = rawSchedules(c);
-        JSONArray keep = new JSONArray();
+    public static JSONArray schedules(Context c) {
+        JSONArray src = pendingSchedules(c), out = new JSONArray();
         long now = System.currentTimeMillis();
         for (int i = 0; i < src.length(); i++) {
             JSONObject o = src.optJSONObject(i);
-            if (o == null) continue;
-            long when = o.optLong("when", 0L);
-            if (when <= 0L) continue;
-            if (when >= now - RECOVERY_GRACE_MS) keep.put(o);
+            if (o != null && o.optLong("when", 0L) >= now) out.put(o);
         }
-        return keep;
+        return out;
     }
-
-    public static void setSchedules(Context c, JSONArray arr) {
-        prefs(c).edit().putString("schedules", arr == null ? "[]" : arr.toString()).apply();
+    public static void setSchedules(Context c, JSONArray a) {
+        prefs(c).edit().putString("schedules", a == null ? "[]" : a.toString()).apply();
     }
-
     public static JSONObject scheduleById(Context c, String id) {
-        if (id == null) return null;
-        JSONArray a = isShabbatArmed(c) ? recoverableSchedules(c) : schedules(c);
+        if (id == null || id.isEmpty()) return null;
+        JSONArray a = pendingSchedules(c);
         for (int i = 0; i < a.length(); i++) {
             JSONObject o = a.optJSONObject(i);
             if (o != null && id.equals(o.optString("id"))) return o;
         }
         return null;
     }
-
-    public static boolean removeSchedule(Context c, String id) {
+    public static synchronized boolean removeSchedule(Context c, String id) {
         if (id == null || id.isEmpty()) return false;
-        JSONArray src = rawSchedules(c);
-        JSONArray keep = new JSONArray();
+        JSONArray src = pendingSchedules(c), out = new JSONArray();
         boolean removed = false;
         for (int i = 0; i < src.length(); i++) {
             JSONObject o = src.optJSONObject(i);
-            if (o != null && id.equals(o.optString("id"))) {
-                removed = true;
-                continue;
-            }
-            if (o != null) keep.put(o);
+            if (o != null && id.equals(o.optString("id"))) removed = true;
+            else if (o != null) out.put(o);
         }
-        if (removed) setSchedules(c, keep);
+        if (removed) setSchedules(c, out);
         return removed;
     }
-
-    public static boolean isShabbatArmed(Context c) {
-        return prefs(c).getBoolean("shabbat_armed", false);
+    public static synchronized JSONObject addSchedule(Context c, JSONObject movie, long when) throws Exception {
+        if (!plexConnected(c)) throw new Exception("Connecte d’abord Plex.");
+        if (movie == null || movie.optString("partKey", "").isEmpty()) throw new Exception("Sélectionne un film lisible.");
+        long now = System.currentTimeMillis();
+        if (when <= now + 5_000L) throw new Exception("Choisis un horaire dans le futur.");
+        long duration = movie.optLong("durationMs", 0L);
+        JSONArray a = schedules(c);
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject other = a.getJSONObject(i);
+            if (SchedulePolicy.overlaps(when, duration, other.optLong("when"), other.optLong("durationMs")))
+                throw new Exception("Cette séance chevauche « " + other.optString("title", "Film") + " ».");
+        }
+        JSONObject s = new JSONObject();
+        s.put("id", UUID.randomUUID().toString());
+        s.put("when", when); s.put("title", movie.optString("title", "Film"));
+        s.put("movie", movie.toString()); s.put("durationMs", duration);
+        s.put("volume", FILM_VOLUME_PERCENT);
+        s.put("server", prefs(c).getString("plex_server_name", "Plex"));
+        s.put("serverId", prefs(c).getString("plex_server_machine_id", ""));
+        s.put("audioLabel", movie.optString("audioLabel", "Automatique"));
+        s.put("subtitleLabel", movie.optString("subtitleLabel", "Aucun"));
+        s.put("createdAt", now);
+        a.put(s); setSchedules(c, a);
+        LogStore.add(c, "Planning", "Séance ajoutée : " + s.optString("title") + " · " + when);
+        return s;
     }
-
-    public static long shabbatArmedAt(Context c) {
-        return prefs(c).getLong("shabbat_armed_at", 0L);
-    }
-
+    public static boolean isShabbatArmed(Context c) { return prefs(c).getBoolean("shabbat_armed", false); }
     public static void setShabbatArmed(Context c, boolean armed) {
-        SharedPreferences.Editor e = prefs(c).edit().putBoolean("shabbat_armed", armed);
-        if (armed) e.putLong("shabbat_armed_at", System.currentTimeMillis());
-        else e.remove("shabbat_armed_at");
-        e.apply();
-    }
-
-    public static JSONObject nextRecoverableSchedule(Context c) {
-        JSONArray a = recoverableSchedules(c);
-        JSONObject best = null;
-        long bestWhen = Long.MAX_VALUE;
-        long now = System.currentTimeMillis();
-        for (int i = 0; i < a.length(); i++) {
-            JSONObject o = a.optJSONObject(i);
-            if (o == null) continue;
-            long when = o.optLong("when", 0L);
-            if (when <= 0L) continue;
-            // Recently missed sessions have priority so recovery can launch immediately.
-            long rank = when < now ? when - Long.MAX_VALUE / 4 : when;
-            if (best == null || rank < bestWhen) {
-                best = o;
-                bestWhen = rank;
-            }
-        }
-        return best;
-    }
-
-    public static boolean hasFutureSchedule(Context c) {
-        JSONArray a = recoverableSchedules(c);
-        long now = System.currentTimeMillis();
-        for (int i = 0; i < a.length(); i++) {
-            JSONObject o = a.optJSONObject(i);
-            if (o != null && o.optLong("when", 0L) > now) return true;
-        }
-        return false;
-    }
-
-    /** Keep the same request-code algorithm used by previous versions so old alarms can be cancelled too. */
-    public static int requestCodeForId(String id) {
-        if (id == null) return 1;
-        int hash = id.hashCode();
-        return hash == Integer.MIN_VALUE ? 0 : Math.abs(hash);
-    }
-
-    public static int preWakeMinutes(Context c) {
-        return prefs(c).getInt("prewake_minutes", 10);
-    }
-
-    /** Film volume is intentionally fixed everywhere, including old stored schedules. */
-    public static int defaultVolume(Context c) {
-        return FILM_VOLUME_PERCENT;
+        prefs(c).edit().putBoolean("shabbat_armed", armed).apply();
     }
 }
