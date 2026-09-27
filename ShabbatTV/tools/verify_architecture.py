@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build-time checks only. No TV or private Plex access is performed."""
-import base64
+import gzip
+import hashlib
 import json
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import tempfile
@@ -37,11 +37,11 @@ player = (src / 'PlayerActivity.java').read_text()
 assert 'putExtra("returning", true)' in player
 assert 'hasFutureSchedule' not in player, 'Last film must also return to black'
 
-# Verify the existing embedded MP4 really contains black pixels and silent decoded audio.
-asset = (src / 'BlackPlaybackAsset.java').read_text()
-block = asset.split('BASE64_MP4 =', 1)[1].split(';', 1)[0]
-payload = ''.join(re.findall(r'"([A-Za-z0-9+/=]+)"', block))
-data = base64.b64decode(payload, validate=True)
+# Decode the actual bundled media, not just a filename or source-code assertion.
+data = gzip.decompress((root / 'app/src/main/assets/black_loop.mp4.gz').read_bytes())
+sha = hashlib.sha256(data).hexdigest()
+assert sha == '0b1a30c8ae4375f7d1639099ef8bd9a011773b9d75e04662964913bf8375e1f2'
+assert sha in (src / 'BlackPlaybackAsset.java').read_text()
 assert shutil.which('ffmpeg'), 'ffmpeg is required for the media verification'
 with tempfile.TemporaryDirectory() as temp:
     mp4 = Path(temp) / 'black.mp4'
@@ -54,6 +54,7 @@ with tempfile.TemporaryDirectory() as temp:
     assert audio and max(audio) == 0, 'The audio is not digitally silent'
 report = {'architecture': 'PASS', 'legacy_classes_removed': len(removed),
           'black_rgb': 'PASS', 'silent_audio': 'PASS', 'embedded_mp4_bytes': len(data),
+          'black_video_sha256': sha,
           'tv_hardware_test': 'NOT RUN', 'remote_plex_playback_test': 'NOT RUN'}
 (root / 'verification-report.json').write_text(json.dumps(report, indent=2) + '\n')
 print(json.dumps(report, indent=2))
